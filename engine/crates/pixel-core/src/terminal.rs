@@ -778,13 +778,14 @@ impl Terminal {
 
     fn frame_path(&self, slot: u64, generation: u64) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "terminal-browser-{}-{}-{generation}-{slot}.rgba",
+            "{FRAME_FILE_PREFIX}{}-{}-{generation}-{slot}.rgba",
             std::process::id(),
             self.terminal_id
         ))
     }
 
     fn write_frame_file(&mut self, data: &[u8]) -> io::Result<String> {
+        SWEEP_STALE_FRAMES.call_once(sweep_stale_frame_files);
         // A terminal opens a frame file only once it reads the escape naming it, so
         // resizing keeps the files the last frame points at until this one is out.
         self.retired_frame_files.clear();
@@ -1510,6 +1511,56 @@ const FILE_PROBE_ID: u32 = 300;
 const FRAME_PROBE_TIMEOUT_MS: u64 = 300;
 
 const FRAME_SLOTS: u64 = 8;
+const FRAME_FILE_PREFIX: &str = "terminal-browser-";
+
+static SWEEP_STALE_FRAMES: std::sync::Once = std::sync::Once::new();
+
+/// A frame file goes away when its FrameFile drops, which a process that was
+/// killed never gets to do. Closing the terminal window kills the daemon that
+/// way, so clear out what earlier runs left in the temporary directory.
+fn sweep_stale_frame_files() {
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(owner) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(FRAME_FILE_PREFIX))
+            .and_then(|rest| rest.strip_suffix(".rgba"))
+            .and_then(|rest| rest.split('-').next())
+            .and_then(|owner| owner.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if owner != std::process::id() && !process_is_running(owner) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn process_is_running(pid: u32) -> bool {
+    let Ok(pid) = i32::try_from(pid) else {
+        return false;
+    };
+    rustix::process::Pid::from_raw(pid)
+        .is_some_and(|pid| rustix::process::test_kill_process(pid).is_ok())
+}
+
+/// A pid Windows will not open is gone. One it opens may since have been reused,
+/// so treat that as running and leave the files for a later run to reconsider.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn process_is_running(pid: u32) -> bool {
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return false;
+    }
+    unsafe { CloseHandle(handle) };
+    true
+}
 
 const HERDR_RETRY_MIN: Duration = Duration::from_secs(1);
 const HERDR_RETRY_MAX: Duration = Duration::from_secs(10);
@@ -2347,6 +2398,24 @@ mod tests {
 
         drop(file);
         assert!(!path.exists(), "the frame file outlived the terminal");
+    }
+
+    #[test]
+    fn sweeping_takes_frames_from_dead_processes_and_spares_live_ones() {
+        let temp = std::env::temp_dir();
+        let gone = temp.join(format!("{FRAME_FILE_PREFIX}{}-7-0-0.rgba", u32::MAX));
+        let ours = temp.join(format!(
+            "{FRAME_FILE_PREFIX}{}-7-0-0.rgba",
+            std::process::id()
+        ));
+        std::fs::write(&gone, b"stale").unwrap();
+        std::fs::write(&ours, b"live").unwrap();
+
+        sweep_stale_frame_files();
+
+        assert!(!gone.exists(), "a killed run kept its frame file");
+        assert!(ours.exists(), "the sweep took a frame file still in use");
+        std::fs::remove_file(&ours).unwrap();
     }
 
     #[test]
