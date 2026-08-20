@@ -93,6 +93,7 @@ the installer added.
 ```powershell
 corepack pnpm install --frozen-lockfile
 .\scripts\build-windows.ps1
+.\scripts\package-windows-inno.ps1
 ```
 
 The build writes `dist-release\terminal-browser`. Add `-Zip` to also pack that directory into
@@ -101,10 +102,36 @@ compresses about 190 MB and nothing in the build needs it, so it is off by defau
 `-AgentBrowserPath C:\path\to\agent-browser.exe` to include the optional `action` command
 dependency.
 
-`installer\terminal-browser.iss` describes the released installer: English and Japanese, a
-per-user install, an optional `PATH` entry, and a WezTerm Start menu shortcut. Compiling it
-takes Inno Setup 6 and happens on the machine that cuts releases, which then publishes the
-`.exe` to the releases page, so it is not part of a source build.
+The packaging step compiles `installer\terminal-browser.iss` into
+`dist-release\terminal-browser-<version>-windows-x64.exe` and needs Inno Setup 6. That
+installer offers English and Japanese, installs per user, can add the command to `PATH`, and
+creates a WezTerm Start menu shortcut when WezTerm is installed.
+
+### Signing
+
+Releases are signed and a plain source build is not. Both scripts take an off-by-default
+`-Sign`, and both reach for `scripts\sign-windows.ps1`, so one place knows about
+certificates:
+
+```powershell
+$env:CODESIGN_CERT = "<the certificate's subject name>"
+.\scripts\build-windows.ps1 -Sign           # pixel.node and the Electron binaries
+.\scripts\package-windows-inno.ps1 -Sign    # the installer and its uninstaller
+```
+
+`CODESIGN_CERT` names the certificate to sign with: the subject name on its own, so
+`Example Ltd` for `CN=Example Ltd, O=…`. Signing stops rather than carrying on when the
+variable is unset or nothing matches it, which is also what a certificate on a token that
+nobody plugged in looks like.
+
+The build signs before packaging because the installer embeds those files, and packaging
+hands the script to Inno Setup instead of running it afterwards because Inno builds the
+uninstaller at compile time and nothing can reach that one later. `sign-windows.ps1` signs
+everything in one call, so a token asks for its PIN once per step, and it passes over files
+that already carry a valid signature. Run it alone to sign named files, or pass
+`-NoElectron` to leave the Electron binaries as their publisher shipped them.
+
+A ZIP carries no signature. Publish the `sha256` from `manifest-win32-x64.json` beside it.
 
 ### Versioning
 
