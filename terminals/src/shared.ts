@@ -9,7 +9,23 @@ export interface CallerTty {
   denied: boolean;
 }
 
+/** Windows has one console device name, so name the pane to tell instances apart. */
+export function windowsConsoleId(): string {
+  const pane = process.env.WEZTERM_PANE ?? process.env.WT_SESSION ?? "default";
+  return `CONIN$#${pane.replaceAll(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
 export function callerTty(): CallerTty {
+  if (process.platform === "win32") {
+    const attached =
+      process.env.WEZTERM_PANE !== undefined ||
+      process.env.TERM_PROGRAM !== undefined ||
+      process.env.WT_SESSION !== undefined;
+    return {
+      path: attached ? windowsConsoleId() : null,
+      denied: false,
+    };
+  }
   let pid = process.pid;
   for (let hops = 0; hops < 30 && pid > 1; hops++) {
     let out: string;

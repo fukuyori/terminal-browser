@@ -48,6 +48,8 @@ pub struct SurfaceMailbox {
 }
 
 impl SurfaceMailbox {
+    // Windows has no shared-texture variant, so Owned is the only pattern there.
+    #[cfg_attr(windows, allow(irrefutable_let_patterns))]
     pub fn submit(&self, id: u32, pixels: SurfacePixels, damage: Option<Rect>) {
         let mut slots = self.slots.lock().unwrap_or_else(|error| error.into_inner());
         let slot = slots.entry(id).or_default();
@@ -95,6 +97,7 @@ impl SurfaceMailbox {
             .collect()
     }
 
+    #[cfg_attr(windows, allow(irrefutable_let_patterns))]
     pub fn recycle(&self, frame: SurfaceFrame, rows: u32) {
         self.presented.fetch_add(1, Ordering::Relaxed);
         self.rows.fetch_add(u64::from(rows), Ordering::Relaxed);
@@ -134,6 +137,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, allow(irrefutable_let_patterns))]
     fn keeps_only_the_latest_unpresented_frame() {
         let mailbox = SurfaceMailbox::default();
         mailbox.submit(1, owned(1), Some(rect(0, 1)));

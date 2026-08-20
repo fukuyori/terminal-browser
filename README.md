@@ -3,6 +3,38 @@
 
 A real browser that runs inside your terminal
 
+### Windows support (experimental)
+
+This fork adds a native Windows x64 build and portable package. It has been tested in
+PowerShell 7 with WezTerm nightly. For the fastest rendering path, enable the kitty
+keyboard and graphics protocols in `wezterm.lua`, then restart WezTerm:
+
+```lua
+config.enable_kitty_keyboard = true
+config.enable_kitty_graphics = true
+```
+
+After building the package, launch it with:
+
+```powershell
+.\dist-release\terminal-browser\bin\terminal-browser.cmd https://example.com
+```
+
+Press `Ctrl+Q` to quit. If `Ctrl+Q` is assigned to WezTerm as a leader key, use
+`Ctrl+Shift+Q` instead.
+
+Windows-specific changes in this fork include:
+
+- A Windows x64 installer, and an optional portable ZIP, carrying Electron, Node.js,
+  `pixel.node`, and a `.cmd` launcher
+- Win32 Console and ConPTY input, resize, mouse-coordinate, wake-up, and terminal-restore handling
+- Windows named pipes for daemon/session IPC and native Windows path/executable handling
+- Windows clipboard-image and `file://` path support
+- Fast kitty file-frame transport with WezTerm nightly
+- An iTerm2 PNG fallback for Windows terminals where kitty graphics replies do not pass through
+  ConPTY; this compatibility path is limited to about 15 FPS, so WezTerm nightly is recommended
+- Explicit image/screen cleanup on exit so the final browser frame does not remain over the shell
+
 
 
 <video src="https://github.com/user-attachments/assets/abe2f43e-fc50-4866-b753-33388967945d" controls></video>
@@ -14,6 +46,63 @@ A real browser that runs inside your terminal
 ```bash
 curl -fsSl https://terminal-browser.sh/install | bash
 ```
+
+### Install on Windows with the installer (experimental)
+
+1. Install WezTerm nightly and enable the kitty keyboard and graphics settings described
+   above. The terminal-browser installer does not install or configure WezTerm itself.
+2. Download `terminal-browser-<version>-windows-x64.exe` from the releases page, then run it.
+   Windows may display a SmartScreen warning until the release has been downloaded enough
+   times.
+3. Select English or Japanese, review the license, and choose the install options. The default
+   per-user destination is `%LOCALAPPDATA%\Programs\terminal-browser`; administrator rights
+   are not required.
+4. Keep **Add terminal-browser to the user PATH** selected to run `terminal-browser` from a
+   terminal. If WezTerm is already installed, the installer can also create a WezTerm Start
+   menu shortcut.
+5. Open a new WezTerm window after installation, then launch the browser from the shortcut or
+   run:
+
+```powershell
+terminal-browser https://example.com
+```
+
+To uninstall it, open **Settings > Apps > Installed apps**, select `terminal-browser`, and
+choose **Uninstall**. The Start menu uninstall shortcut performs the same operation. The
+uninstaller removes the PATH entry that was added during installation.
+
+### Build Windows from source (experimental)
+
+```powershell
+corepack pnpm install --frozen-lockfile
+.\scripts\build-windows.ps1
+```
+
+The build writes `dist-release\terminal-browser`, which runs in place: start
+`bin\terminal-browser.cmd` from a terminal that supports the kitty graphics protocol. Add
+`-Zip` to also pack that directory into `dist-release\terminal-browser-win32-x64.zip` for
+people who want a portable copy — it compresses about 190 MB and nothing in the build needs
+it, so it is off by default. Add `-AgentBrowserPath C:\path\to\agent-browser.exe` to include
+the optional `action` command dependency.
+
+`installer\terminal-browser.iss` describes the released installer: English and Japanese, a
+per-user install, an optional `PATH` entry, and a WezTerm Start menu shortcut. Compiling it
+takes Inno Setup 6 and happens on the machine that cuts releases, so it is not part of a
+source build.
+
+### Versioning
+
+A release is named after the upstream version this fork builds on plus its own revision, so
+`0.5.8-win.2` is the second Windows release built on upstream `v0.5.8`. The current one is the
+`-Version` default at the top of `scripts\build-windows.ps1`; edit that line to cut a new
+release, or pass `-Version` for a one-off build. It ends up in `VERSION`, which is what
+`terminal-browser --version` prints.
+
+Inno Setup wants four numbers, so the fork revision becomes the fourth one and `0.5.8-win.2`
+installs as `0.5.8.2`. A version that does not follow this shape still packages, as `0.0.0.0`.
+
+`terminal-browser upgrade` only installs the upstream macOS and Linux builds, so on Windows
+it refuses and points at this fork's releases instead.
 
 ### Usage
 ```

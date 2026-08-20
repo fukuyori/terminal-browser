@@ -36,7 +36,7 @@ export async function listInstances(): Promise<InstanceRow[]> {
       continue;
     }
     await removeInstance(row.key);
-    fs.rmSync(row.socket, { force: true });
+    if (process.platform !== "win32") fs.rmSync(row.socket, { force: true });
   }
   return live.sort((a, b) => a.startedAt - b.startedAt);
 }

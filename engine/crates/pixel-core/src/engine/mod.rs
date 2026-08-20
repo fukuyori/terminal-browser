@@ -331,6 +331,8 @@ pub struct Engine {
 const COLOR_SETTLE_DELAY: Duration = Duration::from_millis(50);
 const COLOR_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
 const RELAYED_RESIZE_POLL: Duration = Duration::from_millis(500);
+const CONSOLE_RESIZE_POLL: Duration = Duration::from_millis(200);
+const ITERM_MIN_FRAME_INTERVAL: Duration = Duration::from_millis(67);
 
 impl Engine {
     pub fn new(config: EngineConfig) -> io::Result<Self> {
@@ -629,8 +631,9 @@ impl Engine {
             let remaining = deadline.saturating_duration_since(Instant::now());
             first_wait = Some(first_wait.map_or(remaining, |w| w.min(remaining)));
         }
-        if self.term.relayed() {
-            first_wait = Some(first_wait.map_or(RELAYED_RESIZE_POLL, |w| w.min(RELAYED_RESIZE_POLL)));
+        if self.term.resize_needs_polling() {
+            let poll = if self.term.relayed() { RELAYED_RESIZE_POLL } else { CONSOLE_RESIZE_POLL };
+            first_wait = Some(first_wait.map_or(poll, |w| w.min(poll)));
         }
         self.term.poll_event(first_wait)
     }
@@ -948,10 +951,15 @@ impl Engine {
             return Duration::ZERO;
         }
         let budget = self.frame_budget_bytes_per_sec;
-        if budget <= 0.0 {
-            return Duration::ZERO;
+        let transfer_debt = if budget <= 0.0 {
+            Duration::ZERO
+        } else {
+            Duration::from_secs_f32((self.last_frame_bytes as f32 / budget).min(0.2))
+        };
+        if self.term.uses_iterm_images() {
+            return ITERM_MIN_FRAME_INTERVAL.max(transfer_debt);
         }
-        Duration::from_secs_f32((self.last_frame_bytes as f32 / budget).min(0.2))
+        transfer_debt
     }
 
     fn draws_something(&self) -> bool {

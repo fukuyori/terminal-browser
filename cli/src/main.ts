@@ -12,6 +12,7 @@ import {
   checkTerminal,
   detect,
   unsupportedGraphicsMessage,
+  windowsConsoleId,
 } from "pixel-terminals";
 import type { Direction, Terminal, TerminalCheck } from "pixel-terminals";
 import { actionCommand } from "./action";
@@ -59,11 +60,11 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const ELECTRON_DIST_BIN =
   process.platform === "darwin"
     ? ["terminal-browser.app", "Contents", "MacOS", "terminal-browser"]
-    : ["electron"];
+    : [process.platform === "win32" ? "electron.exe" : "electron"];
 const ELECTRON_DEV_BIN =
   process.platform === "darwin"
     ? ["Electron.app", "Contents", "MacOS", "Electron"]
-    : ["electron"];
+    : [process.platform === "win32" ? "electron.exe" : "electron"];
 
 function browserDirectory(): string {
   return path.resolve(__dirname, "..", "..", "browser");
@@ -100,14 +101,17 @@ function browserLaunchCommand(argv: string[]): { command: string[]; cwd: string 
   ensureDataDir();
   const logDir = LOGS_DIR;
   fs.mkdirSync(logDir, { recursive: true });
-  const quoted = [electron, main, ...argv]
-    .map((arg) => `'${arg.replaceAll("'", `'\\''`)}'`)
-    .join(" ");
-  const line = `exec ${quoted} 2>>'${logDir.replaceAll("'", `'\\''`)}/stderr.log'`;
-  return { command: ["/bin/sh", "-c", line], cwd: browserDir };
+  return { command: [electron, main, ...argv], cwd: browserDir };
 }
 
 function clientLaunchCommand(argv: string[]): string[] {
+  if (process.platform === "win32") {
+    // A terminal spawns this with CreateProcess, which cannot start a .cmd on its own.
+    const runner = DIST_ROOT
+      ? ["cmd.exe", "/d", "/s", "/c", path.join(DIST_ROOT, "bin", "terminal-browser.cmd")]
+      : [process.execPath, path.resolve(__dirname, "main.js")];
+    return [...runner, "open", ...argv];
+  }
   const runner = DIST_ROOT
     ? [path.join(DIST_ROOT, "bin", "terminal-browser")]
     : [process.execPath, path.resolve(__dirname, "main.js")];
@@ -115,6 +119,9 @@ function clientLaunchCommand(argv: string[]): string[] {
 }
 
 function ownTtyPath(): string | null {
+  if (process.platform === "win32") {
+    return process.stdin.isTTY && process.stdout.isTTY ? windowsConsoleId() : null;
+  }
   try {
     const out = execFileSync("tty", {
       stdio: ["inherit", "pipe", "ignore"],
@@ -140,6 +147,33 @@ function browserBuildStamp(): string {
   }
 }
 
+function sessionEnvironment(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  if (process.platform === "win32") {
+    env.TERMINAL_BROWSER_CONSOLE_PID = String(process.pid);
+  }
+  if (process.platform !== "win32" || process.env.WEZTERM_PANE === undefined) return env;
+  try {
+    const panes = JSON.parse(
+      execFileSync("wezterm", ["cli", "list", "--format", "json"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }),
+    ) as Array<{
+      pane_id: number;
+      size?: { cols?: number; rows?: number; pixel_width?: number; pixel_height?: number };
+    }>;
+    const pane = panes.find((candidate) => String(candidate.pane_id) === process.env.WEZTERM_PANE);
+    if (pane?.size) {
+      env.TERMINAL_BROWSER_COLS = String(pane.size.cols ?? 0);
+      env.TERMINAL_BROWSER_ROWS = String(pane.size.rows ?? 0);
+      env.TERMINAL_BROWSER_WIDTH_PX = String(pane.size.pixel_width ?? 0);
+      env.TERMINAL_BROWSER_HEIGHT_PX = String(pane.size.pixel_height ?? 0);
+    }
+  } catch {}
+  return env;
+}
+
 function connectDaemon(): Promise<net.Socket> {
   return new Promise((resolve, reject) => {
     const socket = net.connect(DAEMON_SOCKET);
@@ -150,7 +184,19 @@ function connectDaemon(): Promise<net.Socket> {
 
 function spawnDaemon() {
   const { command, cwd } = browserLaunchCommand(["--daemon"]);
-  const child = spawn(command[0], command.slice(1), { cwd, detached: true, stdio: "ignore" });
+  const stderr = fs.openSync(path.join(LOGS_DIR, "stderr.log"), "a");
+  const windows = process.platform === "win32";
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(command[0], command.slice(1), {
+      cwd,
+      detached: !windows,
+      stdio: ["ignore", "ignore", stderr],
+      windowsHide: windows,
+    });
+  } finally {
+    fs.closeSync(stderr);
+  }
   child.unref();
 }
 
@@ -201,7 +247,7 @@ async function openSession(argv: string[], tty: string): Promise<{ socket: net.S
     cmd: "open",
     tty,
     argv,
-    env: process.env,
+    env: sessionEnvironment(),
     cwd: process.cwd(),
     build: browserBuildStamp(),
   })}\n`;
@@ -472,7 +518,8 @@ async function openCommand(args: string[]) {
     fail(`unexpected ${positionals[1]} (one url; --split <direction> opens a new pane)`);
   }
   await requireGraphics(await currentTerminal());
-  if (!split && interactiveTty()) {
+  const launchedInSplit = args.some((arg) => arg.startsWith("--split-dir="));
+  if (!split && (interactiveTty() || launchedInSplit)) {
     return openHere(args);
   }
   const terminal = (await currentTerminal()).terminal;

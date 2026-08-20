@@ -1,5 +1,6 @@
 use std::io;
 use std::path::PathBuf;
+#[cfg(not(windows))]
 use std::process::Command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +105,7 @@ fn upsert_block(config: &str, app_name: &str, keybinds: &[&str]) -> Option<Strin
 
 // this makes me uncomfortable, id like to have a link in ghosttys github of
 // where they respect this
+#[cfg(not(windows))]
 pub fn reload() -> io::Result<bool> {
     let mut pid = std::process::id() as i32;
     for _ in 0..16 {
@@ -128,6 +130,12 @@ pub fn reload() -> io::Result<bool> {
     Ok(false)
 }
 
+#[cfg(windows)]
+pub fn reload() -> io::Result<bool> {
+    Ok(false)
+}
+
+#[cfg(not(windows))]
 fn process_info(pid: i32) -> io::Result<Option<(i32, String)>> {
     let output = Command::new("ps")
         .args(["-o", "ppid=,comm=", "-p", &pid.to_string()])

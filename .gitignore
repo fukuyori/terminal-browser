@@ -51,3 +51,8 @@ dist-release/
 .dev.vars
 .wrangler/
 skill/build/
+
+# Local signing and installer packaging, which name a certificate and a toolchain
+# that only exist on the machine that cuts releases
+scripts/sign-windows.ps1
+scripts/package-windows-inno.ps1

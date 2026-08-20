@@ -35,8 +35,10 @@ export async function runDaemon(cdpPort: number | null): Promise<void> {
     app.exit(3);
     return;
   }
-  fs.mkdirSync(path.dirname(DAEMON_SOCKET), { recursive: true });
-  fs.rmSync(DAEMON_SOCKET, { force: true });
+  if (process.platform !== "win32") {
+    fs.mkdirSync(path.dirname(DAEMON_SOCKET), { recursive: true });
+    fs.rmSync(DAEMON_SOCKET, { force: true });
+  }
 
   const build = buildStamp();
   const sessions = new Map<string, SessionHandle>();

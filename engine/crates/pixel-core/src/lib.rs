@@ -3,8 +3,13 @@ pub mod clipboard_image;
 mod desc;
 mod engine;
 pub mod ghostty;
+#[cfg(not(windows))]
+mod herdr;
+#[cfg(windows)]
+#[path = "herdr_windows.rs"]
 mod herdr;
 mod image_cache;
+mod iterm;
 mod kitty;
 pub mod logging;
 mod menu;

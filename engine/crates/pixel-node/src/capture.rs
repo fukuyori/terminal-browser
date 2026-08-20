@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufWriter, Read, Write};
-use std::os::unix::fs::FileExt;
+use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
@@ -436,7 +435,8 @@ impl Segment {
             return Ok(());
         }
         self.compressed.resize(meta.len as usize, 0);
-        self.seg.read_exact_at(&mut self.compressed, meta.offset)?;
+        self.seg.seek(SeekFrom::Start(meta.offset))?;
+        self.seg.read_exact(&mut self.compressed)?;
         self.rows.resize(expected, 0);
         let written = lz4_flex::block::decompress_into(&self.compressed, &mut self.rows)
             .map_err(io::Error::other)?;
@@ -498,6 +498,7 @@ impl Registry {
         Ok(id)
     }
 
+    #[cfg(not(windows))]
     pub fn wants(&self, surface: u32) -> bool {
         self.active.load(Ordering::Relaxed) > 0
             && self.lock().by_surface.contains_key(&surface)

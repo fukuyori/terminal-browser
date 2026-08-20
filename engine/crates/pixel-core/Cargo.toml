@@ -15,8 +15,15 @@ taffy = { workspace = true }
 tiny-skia = { workspace = true }
 image = { workspace = true }
 arboard = { workspace = true }
+memmap2 = { workspace = true }
 
 [lints]
 workspace = true
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+] }

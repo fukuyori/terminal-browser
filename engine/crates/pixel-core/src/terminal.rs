@@ -1,7 +1,20 @@
 use std::io;
 use std::time::{Duration, Instant};
 
+#[cfg(not(windows))]
 use rustix::termios::{self, OptionalActions, Termios};
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
+#[cfg(windows)]
+use windows_sys::Win32::System::Console::{
+    AttachConsole, CONSOLE_SCREEN_BUFFER_INFO, DISABLE_NEWLINE_AUTO_RETURN, ENABLE_ECHO_INPUT,
+    ENABLE_EXTENDED_FLAGS, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_PROCESSED_OUTPUT,
+    ENABLE_QUICK_EDIT_MODE, ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    FOCUS_EVENT, FreeConsole, GetConsoleMode, GetConsoleScreenBufferInfo, INPUT_RECORD, MENU_EVENT,
+    PeekConsoleInputW, ReadConsoleInputW, SetConsoleMode, WINDOW_BUFFER_SIZE_EVENT,
+};
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::{CreateEventW, SetEvent, WaitForMultipleObjects};
 
 use crate::canvas::Canvas;
 use crate::wrapper::Wrapper;
@@ -190,6 +203,7 @@ impl WindowSize {
     }
 }
 
+#[cfg(not(windows))]
 fn retry_intr<T>(mut call: impl FnMut() -> rustix::io::Result<T>) -> rustix::io::Result<T> {
     loop {
         match call() {
@@ -204,10 +218,17 @@ enum TtyHandle {
         stdin: io::Stdin,
         stdout: io::Stdout,
     },
+    #[cfg(not(windows))]
     File(std::fs::File),
+    #[cfg(windows)]
+    Console {
+        input: std::fs::File,
+        output: std::fs::File,
+    },
 }
 
 impl TtyHandle {
+    #[cfg(not(windows))]
     fn read_fd(&self) -> rustix::fd::BorrowedFd<'_> {
         use rustix::fd::AsFd as _;
         match self {
@@ -216,17 +237,144 @@ impl TtyHandle {
         }
     }
 
+    #[cfg(windows)]
+    fn input_handle(&self) -> HANDLE {
+        use std::os::windows::io::AsRawHandle as _;
+        match self {
+            TtyHandle::Stdio { stdin, .. } => stdin.as_raw_handle() as HANDLE,
+            TtyHandle::Console { input, .. } => input.as_raw_handle() as HANDLE,
+        }
+    }
+
+    #[cfg(windows)]
+    fn output_handle(&self) -> HANDLE {
+        use std::os::windows::io::AsRawHandle as _;
+        match self {
+            TtyHandle::Stdio { stdout, .. } => stdout.as_raw_handle() as HANDLE,
+            TtyHandle::Console { output, .. } => output.as_raw_handle() as HANDLE,
+        }
+    }
+
+    #[cfg(windows)]
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        use std::io::Read as _;
+        match self {
+            TtyHandle::Stdio { stdin, .. } => stdin.read(buf),
+            TtyHandle::Console { input, .. } => input.read(buf),
+        }
+    }
+
     fn out(&mut self) -> &mut dyn io::Write {
         match self {
             TtyHandle::Stdio { stdout, .. } => stdout,
+            #[cfg(not(windows))]
             TtyHandle::File(file) => file,
+            #[cfg(windows)]
+            TtyHandle::Console { output, .. } => output,
+        }
+    }
+}
+
+#[cfg(not(windows))]
+type TerminalState = Termios;
+
+#[cfg(windows)]
+struct TerminalState {
+    input_mode: Option<u32>,
+    output_mode: Option<u32>,
+}
+
+#[cfg(not(windows))]
+fn configure_terminal(io: &TtyHandle) -> io::Result<TerminalState> {
+    let saved = retry_intr(|| termios::tcgetattr(&io.read_fd()))?;
+    let mut raw = saved.clone();
+    raw.make_raw();
+    retry_intr(|| termios::tcsetattr(&io.read_fd(), OptionalActions::Drain, &raw))?;
+    Ok(saved)
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn configure_terminal(io: &TtyHandle) -> io::Result<TerminalState> {
+    let mut input_mode = 0;
+    let mut output_mode = 0;
+    unsafe {
+        let input_mode =
+            (GetConsoleMode(io.input_handle(), &mut input_mode) != 0).then_some(input_mode);
+        let output_mode =
+            (GetConsoleMode(io.output_handle(), &mut output_mode) != 0).then_some(output_mode);
+        if let Some(input_mode) = input_mode {
+            // Quick edit steals mouse reports for console text selection, and it can
+            // only be turned off while the extended flags bit is set.
+            let raw_input = (input_mode | ENABLE_VIRTUAL_TERMINAL_INPUT | ENABLE_EXTENDED_FLAGS)
+                & !(ENABLE_ECHO_INPUT
+                    | ENABLE_LINE_INPUT
+                    | ENABLE_PROCESSED_INPUT
+                    | ENABLE_QUICK_EDIT_MODE);
+            if SetConsoleMode(io.input_handle(), raw_input) == 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+        if let Some(output_mode) = output_mode {
+            let raw_output = output_mode
+                | ENABLE_PROCESSED_OUTPUT
+                | ENABLE_VIRTUAL_TERMINAL_PROCESSING
+                | DISABLE_NEWLINE_AUTO_RETURN;
+            if SetConsoleMode(io.output_handle(), raw_output) == 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+        Ok(TerminalState { input_mode, output_mode })
+    }
+}
+
+#[cfg(not(windows))]
+fn restore_terminal(io: &TtyHandle, state: &TerminalState) {
+    let _ = retry_intr(|| termios::tcsetattr(&io.read_fd(), OptionalActions::Flush, state));
+}
+
+#[cfg(windows)]
+static LIVE_CONSOLES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A process can only be attached to one console at a time, so a session may move
+/// this process to the caller's console only while no other session is drawing.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn attach_console(console_pid: u32) -> io::Result<()> {
+    let ordering = std::sync::atomic::Ordering::AcqRel;
+    if LIVE_CONSOLES.fetch_add(1, ordering) != 0 {
+        LIVE_CONSOLES.fetch_sub(1, ordering);
+        return Err(io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "another terminal-browser session already owns this process' console",
+        ));
+    }
+    // Drop the console inherited from whichever caller started this process.
+    unsafe { FreeConsole() };
+    if unsafe { AttachConsole(console_pid) } != 0 {
+        return Ok(());
+    }
+    let error = io::Error::last_os_error();
+    LIVE_CONSOLES.fetch_sub(1, ordering);
+    Err(error)
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn restore_terminal(io: &TtyHandle, state: &TerminalState) {
+    unsafe {
+        if let Some(input_mode) = state.input_mode {
+            SetConsoleMode(io.input_handle(), input_mode);
+        }
+        if let Some(output_mode) = state.output_mode {
+            SetConsoleMode(io.output_handle(), output_mode);
         }
     }
 }
 
 pub struct Terminal {
     io: TtyHandle,
-    saved: Termios,
+    saved: TerminalState,
     last_frame_size: Option<(u32, u32)>,
     mouse_pixels: bool,
     focused: bool,
@@ -243,9 +391,13 @@ pub struct Terminal {
     wrapper: Wrapper,
     image_id: u32,
     placeholders: Option<(u32, u32)>,
+    #[cfg(not(windows))]
     wake_rx: Option<rustix::fd::OwnedFd>,
     waker: Option<Waker>,
+    #[cfg(not(windows))]
     resize_slot: Option<usize>,
+    #[cfg(windows)]
+    fallback_size: Option<WindowSize>,
     terminal_id: u64,
     // if the terminal supports https://sw.kovidgoyal.net/kitty/clipboard/
     clipboard_data: bool,
@@ -267,10 +419,13 @@ const CLIP_READ_MAX_BYTES: usize = 64 * 1024 * 1024;
 
 const LONE_ESCAPE_WAIT: Duration = Duration::from_millis(50);
 
+#[cfg(not(windows))]
 const RESIZE_WAKE_SLOTS: usize = 64;
+#[cfg(not(windows))]
 static RESIZE_WAKE_FDS: [std::sync::atomic::AtomicI32; RESIZE_WAKE_SLOTS] =
     [const { std::sync::atomic::AtomicI32::new(-1) }; RESIZE_WAKE_SLOTS];
 
+#[cfg(not(windows))]
 fn claim_resize_slot(fd: i32) -> Option<usize> {
     for (i, slot) in RESIZE_WAKE_FDS.iter().enumerate() {
         if slot
@@ -289,6 +444,7 @@ fn claim_resize_slot(fd: i32) -> Option<usize> {
 }
 
 #[allow(unsafe_code)]
+#[cfg(not(windows))]
 extern "C" fn sigwinch_handler(_: libc::c_int) {
     for slot in &RESIZE_WAKE_FDS {
         let fd = slot.load(std::sync::atomic::Ordering::Relaxed);
@@ -302,12 +458,42 @@ extern "C" fn sigwinch_handler(_: libc::c_int) {
 
 #[derive(Clone)]
 pub struct Waker {
+    #[cfg(not(windows))]
     fd: std::sync::Arc<rustix::fd::OwnedFd>,
+    #[cfg(windows)]
+    event: std::sync::Arc<WindowsEvent>,
 }
 
 impl Waker {
+    #[allow(unsafe_code)]
     pub fn wake(&self) {
+        #[cfg(not(windows))]
         let _ = rustix::io::write(&*self.fd, &[1]);
+        #[cfg(windows)]
+        unsafe {
+            SetEvent(self.event.0);
+        }
+    }
+}
+
+#[cfg(windows)]
+struct WindowsEvent(HANDLE);
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+unsafe impl Send for WindowsEvent {}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+unsafe impl Sync for WindowsEvent {}
+
+#[cfg(windows)]
+impl Drop for WindowsEvent {
+    #[allow(unsafe_code)]
+    fn drop(&mut self) {
+        unsafe {
+            CloseHandle(self.0);
+        }
     }
 }
 
@@ -331,6 +517,18 @@ impl SessionEnv {
             None => std::env::var(key).ok(),
         }
     }
+
+    #[cfg(windows)]
+    fn window_size(&self) -> Option<WindowSize> {
+        let value = |key| self.var(key)?.parse().ok();
+        let size = WindowSize {
+            cols: value("TERMINAL_BROWSER_COLS")?,
+            rows: value("TERMINAL_BROWSER_ROWS")?,
+            width_px: value("TERMINAL_BROWSER_WIDTH_PX").unwrap_or(0),
+            height_px: value("TERMINAL_BROWSER_HEIGHT_PX").unwrap_or(0),
+        };
+        (size.cols > 0 && size.rows > 0).then_some(size)
+    }
 }
 
 impl Terminal {
@@ -346,15 +544,46 @@ impl Terminal {
     }
 
     pub fn open(tty_path: &str, wrapper: Wrapper, env: SessionEnv) -> io::Result<Self> {
+        #[cfg(not(windows))]
+        {
         let file = std::fs::File::options().read(true).write(true).open(tty_path)?;
-        Self::with_handle(TtyHandle::File(file), wrapper, env)
+            Self::with_handle(TtyHandle::File(file), wrapper, env)
+        }
+        #[cfg(windows)]
+        {
+            let _ = tty_path;
+            let console_pid = env
+                .var("TERMINAL_BROWSER_CONSOLE_PID")
+                .and_then(|value| value.parse().ok())
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing console pid"))?;
+            attach_console(console_pid)?;
+            let opened = Self::on_attached_console(wrapper, env);
+            if opened.is_err() {
+                LIVE_CONSOLES.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+            }
+            opened
+        }
+    }
+
+    /// Frames go to the console this process is attached to, not to its own
+    /// stdout, which the daemon inherited from whichever caller started it.
+    #[cfg(windows)]
+    fn on_attached_console(wrapper: Wrapper, env: SessionEnv) -> io::Result<Self> {
+        let console = |name| std::fs::File::options().read(true).write(true).open(name);
+        Self::with_handle(
+            TtyHandle::Console {
+                input: console("CONIN$")?,
+                output: console("CONOUT$")?,
+            },
+            wrapper,
+            env,
+        )
     }
 
     fn with_handle(mut io: TtyHandle, wrapper: Wrapper, env: SessionEnv) -> io::Result<Self> {
-        let saved = retry_intr(|| termios::tcgetattr(&io.read_fd()))?;
-        let mut raw = saved.clone();
-        raw.make_raw();
-        retry_intr(|| termios::tcsetattr(&io.read_fd(), OptionalActions::Drain, &raw))?;
+        let saved = configure_terminal(&io)?;
+        #[cfg(windows)]
+        let fallback_size = env.window_size();
 
         // would prefer if they weren't magic and linked to some known doc on the internet
         io.out().write_all(
@@ -381,9 +610,13 @@ impl Terminal {
             wrapper,
             image_id: frame_image_id(wrapper.relayed()),
             placeholders: None,
+            #[cfg(not(windows))]
             wake_rx: None,
             waker: None,
+            #[cfg(not(windows))]
             resize_slot: None,
+            #[cfg(windows)]
+            fallback_size,
             terminal_id: NEXT_TERMINAL_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             clipboard_data: false,
             clip_read: None,
@@ -403,6 +636,20 @@ impl Terminal {
             terminal.herdr_retry = Some((Instant::now() + HERDR_RETRY_MIN, HERDR_RETRY_MIN));
         }
         terminal.transport = terminal.probe_transport()?;
+        if terminal.transport == FrameTransport::Iterm {
+            // WezTerm 2024 on Windows hides iTerm2 inline images together with
+            // the text cursor. Keep the cursor visible on this compatibility path.
+            terminal.io.out().write_all(b"\x1b[?25h")?;
+            terminal.io.out().flush()?;
+
+            // The same WezTerm build reports mode 1016 as unsupported even
+            // though it sends SGR mouse coordinates in pixels after accepting
+            // the mode. Treat those coordinates as pixels instead of scaling
+            // them as terminal cells a second time.
+            if env.var("TERM_PROGRAM").as_deref() == Some("WezTerm") {
+                terminal.mouse_pixels = true;
+            }
+        }
         terminal.color_scheme_updates = terminal.probe_color_scheme()?;
         if terminal.color_scheme_updates {
             terminal.io.out().write_all(b"\x1b[?2031h")?;
@@ -417,6 +664,12 @@ impl Terminal {
 
     pub fn relayed(&self) -> bool {
         self.wrapper.relayed()
+    }
+
+    /// tmux and the Windows console both stay quiet when the window changes, so
+    /// the only way to notice a resize there is to keep asking for the size.
+    pub fn resize_needs_polling(&self) -> bool {
+        self.relayed() || cfg!(windows)
     }
 
     pub fn kitty_keyboard(&self) -> bool {
@@ -435,8 +688,9 @@ impl Terminal {
             .ok()
             .and_then(|value| match value.trim() {
                 "file" => Some(FrameTransport::File),
-                "shared" | "shm" => Some(FrameTransport::Shared),
+                "shared" | "shm" if !cfg!(windows) => Some(FrameTransport::Shared),
                 "inline" => Some(FrameTransport::Inline),
+                "iterm" => Some(FrameTransport::Iterm),
                 _ => None,
             })
         {
@@ -456,10 +710,18 @@ impl Terminal {
             if self.wrapper.relayed() {
                 "no answer about file or shared memory frames under tmux, sending pixels inline — \
                  check `tmux show -p allow-passthrough`, or set TERMINAL_BROWSER_FRAMES=file"
+            } else if cfg!(windows) {
+                "Kitty graphics did not answer through ConPTY, sending PNG frames with the \
+                 iTerm2 image protocol"
             } else {
                 "terminal takes neither file nor shared memory frames, sending pixels inline"
             },
         );
+        #[cfg(windows)]
+        {
+            return Ok(FrameTransport::Iterm);
+        }
+        #[cfg(not(windows))]
         Ok(FrameTransport::Inline)
     }
 
@@ -485,6 +747,7 @@ impl Terminal {
         Ok(reply.unwrap_or(false))
     }
 
+    #[cfg(not(windows))]
     fn probe_shared_memory(&mut self) -> io::Result<bool> {
         let name = format!("/px-{}-q", std::process::id());
         if write_shm(&name, &[0, 0, 0, 255]).is_err() {
@@ -504,6 +767,11 @@ impl Terminal {
         })?;
         let _ = rustix::shm::unlink(&name);
         Ok(reply.unwrap_or(false))
+    }
+
+    #[cfg(windows)]
+    fn probe_shared_memory(&mut self) -> io::Result<bool> {
+        Ok(false)
     }
 
     fn frame_path(&self, slot: u64, generation: u64) -> std::path::PathBuf {
@@ -534,16 +802,26 @@ impl Terminal {
         Ok(file.path.to_string_lossy().into_owned())
     }
 
+    #[cfg(not(windows))]
     fn shm_name(&self, seq: u64) -> String {
         format!("/px-{}-{}-{seq}", std::process::id(), self.terminal_id)
     }
 
+    #[cfg(not(windows))]
     fn write_shm_frame(&mut self, data: &[u8]) -> io::Result<String> {
         let name = self.shm_name(self.frame_seq % FRAME_SLOTS);
         self.frame_seq += 1;
         let _ = rustix::shm::unlink(&name);
         write_shm(&name, data)?;
         Ok(name)
+    }
+
+    #[cfg(windows)]
+    fn write_shm_frame(&mut self, _data: &[u8]) -> io::Result<String> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "shared frame transport is unavailable on Windows",
+        ))
     }
 
     fn connect_herdr(&mut self) {
@@ -603,7 +881,9 @@ impl Terminal {
             }
             self.placeholders = None;
         }
-        let placement = if self.wrapper.relayed() {
+        let placement = if self.transport == FrameTransport::Iterm {
+            Placement::Cursor
+        } else if self.wrapper.relayed() {
             let (cols, rows) = self.grid_for(canvas);
             Placement::Cells { cols, rows }
         } else {
@@ -615,10 +895,17 @@ impl Terminal {
          being generic over graphcis protocols to support
          more terminals (even if degraded)
         */
-        if let Some(medium) = match self.transport {
+        if self.transport == FrameTransport::Iterm {
+            frame.extend_from_slice(b"\x1b[2J\x1b[H");
+            frame.extend_from_slice(&crate::iterm::transmit(
+                canvas.width,
+                canvas.height,
+                &canvas.pixels,
+            )?);
+        } else if let Some(medium) = match self.transport {
             FrameTransport::File => Some(crate::kitty::Medium::File),
             FrameTransport::Shared => Some(crate::kitty::Medium::Shared),
-            FrameTransport::Inline => None,
+            FrameTransport::Inline | FrameTransport::Iterm => None,
         } {
             let name = crate::profiler::span("kitty.handoff", || match self.transport {
                 FrameTransport::File => self.write_frame_file(&canvas.pixels),
@@ -743,11 +1030,14 @@ impl Terminal {
                 return Ok(None);
             }
             let mut chunk = [0u8; 256];
+            #[cfg(not(windows))]
             let n = match rustix::io::read(self.io.read_fd(), &mut chunk) {
                 Ok(n) => n,
                 Err(rustix::io::Errno::INTR) => continue,
                 Err(e) => return Err(e.into()),
             };
+            #[cfg(windows)]
+            let n = self.io.read(&mut chunk)?;
             if n == 0 {
                 return Err(io::ErrorKind::UnexpectedEof.into());
             }
@@ -763,6 +1053,7 @@ impl Terminal {
         Some(*self.lone_escape_since.get_or_insert_with(Instant::now) + LONE_ESCAPE_WAIT)
     }
 
+    #[cfg(not(windows))]
     pub fn waker(&mut self) -> io::Result<Waker> {
         if let Some(waker) = &self.waker {
             return Ok(waker.clone());
@@ -778,7 +1069,23 @@ impl Terminal {
         Ok(waker)
     }
 
+    #[cfg(windows)]
     #[allow(unsafe_code)]
+    pub fn waker(&mut self) -> io::Result<Waker> {
+        if let Some(waker) = &self.waker {
+            return Ok(waker.clone());
+        }
+        let event = unsafe { CreateEventW(std::ptr::null(), 0, 0, std::ptr::null()) };
+        if event.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let waker = Waker { event: std::sync::Arc::new(WindowsEvent(event)) };
+        self.waker = Some(waker.clone());
+        Ok(waker)
+    }
+
+    #[allow(unsafe_code)]
+    #[cfg(not(windows))]
     pub fn watch_resize(&mut self) -> io::Result<()> {
         use rustix::fd::AsRawFd as _;
         let waker = self.waker()?;
@@ -794,6 +1101,13 @@ impl Terminal {
         Ok(())
     }
 
+    #[cfg(windows)]
+    pub fn watch_resize(&mut self) -> io::Result<()> {
+        self.waker()?;
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
     fn wait_for_input(&self, wait: Option<Duration>) -> io::Result<bool> {
         let timeout = match wait {
             Some(w) => Some(
@@ -832,6 +1146,55 @@ impl Terminal {
         }
     }
 
+    #[cfg(windows)]
+    #[allow(unsafe_code)]
+    fn wait_for_input(&self, wait: Option<Duration>) -> io::Result<bool> {
+        let timeout = wait.map_or(u32::MAX, |duration| {
+            duration.as_millis().min(u128::from(u32::MAX - 1)) as u32
+        });
+        let mut handles = vec![self.io.input_handle()];
+        if let Some(waker) = &self.waker {
+            handles.push(waker.event.0);
+        }
+        let result = unsafe {
+            WaitForMultipleObjects(handles.len() as u32, handles.as_ptr(), 0, timeout)
+        };
+        if result == WAIT_OBJECT_0 {
+            return Ok(self.take_silent_console_records());
+        }
+        if result == WAIT_TIMEOUT || result == WAIT_OBJECT_0 + 1 {
+            return Ok(false);
+        }
+        Err(io::Error::last_os_error())
+    }
+
+    /// Resize, focus and menu records wake the input handle but never turn into
+    /// bytes, so reading after one of them would block. Take them off the queue
+    /// and report whether anything readable is left behind.
+    #[cfg(windows)]
+    #[allow(unsafe_code)]
+    fn take_silent_console_records(&self) -> bool {
+        const SILENT: [u32; 3] = [WINDOW_BUFFER_SIZE_EVENT, FOCUS_EVENT, MENU_EVENT];
+        let handle = self.io.input_handle();
+        loop {
+            let mut record: INPUT_RECORD = unsafe { std::mem::zeroed() };
+            let mut count = 0;
+            if unsafe { PeekConsoleInputW(handle, &mut record, 1, &mut count) } == 0 {
+                // Not a console handle, so the wait already means readable bytes.
+                return true;
+            }
+            if count == 0 {
+                return false;
+            }
+            if !SILENT.contains(&u32::from(record.EventType)) {
+                return true;
+            }
+            if unsafe { ReadConsoleInputW(handle, &mut record, 1, &mut count) } == 0 || count == 0 {
+                return true;
+            }
+        }
+    }
+
     fn mouse_position_px(&self, x: u32, y: u32) -> (u32, u32) {
         if self.mouse_pixels {
             (x.saturating_sub(1), y.saturating_sub(1))
@@ -845,13 +1208,35 @@ impl Terminal {
     }
 
     pub fn size(&self) -> io::Result<WindowSize> {
+        #[cfg(not(windows))]
+        {
         let ws = retry_intr(|| termios::tcgetwinsize(&self.io.read_fd()))?;
-        Ok(WindowSize {
-            cols: u32::from(ws.ws_col),
-            rows: u32::from(ws.ws_row),
-            width_px: u32::from(ws.ws_xpixel),
-            height_px: u32::from(ws.ws_ypixel),
-        })
+            Ok(WindowSize {
+                cols: u32::from(ws.ws_col),
+                rows: u32::from(ws.ws_row),
+                width_px: u32::from(ws.ws_xpixel),
+                height_px: u32::from(ws.ws_ypixel),
+            })
+        }
+        #[cfg(windows)]
+        #[allow(unsafe_code)]
+        {
+            let mut info: CONSOLE_SCREEN_BUFFER_INFO = unsafe { std::mem::zeroed() };
+            if unsafe { GetConsoleScreenBufferInfo(self.io.output_handle(), &mut info) } == 0 {
+                return self.fallback_size.ok_or_else(io::Error::last_os_error);
+            }
+            let cols = u32::from((info.srWindow.Right - info.srWindow.Left + 1).max(0) as u16);
+            let rows = u32::from((info.srWindow.Bottom - info.srWindow.Top + 1).max(0) as u16);
+            // The console only counts cells. A cell keeps its pixel size across a
+            // resize, so scale the size the caller measured at startup to this grid.
+            let cell = self.fallback_size.and_then(|size| size.cell_size());
+            Ok(WindowSize {
+                cols,
+                rows,
+                width_px: cell.map_or(0, |(width, _)| width * cols),
+                height_px: cell.map_or(0, |(_, height)| height * rows),
+            })
+        }
     }
 
     pub fn reports_pixel_mouse(&self) -> bool {
@@ -859,7 +1244,11 @@ impl Terminal {
     }
 
     pub fn frames_are_inline(&self) -> bool {
-        self.transport == FrameTransport::Inline
+        matches!(self.transport, FrameTransport::Inline | FrameTransport::Iterm)
+    }
+
+    pub fn uses_iterm_images(&self) -> bool {
+        self.transport == FrameTransport::Iterm
     }
 
     pub fn forget_cell_size(&mut self) {
@@ -914,11 +1303,14 @@ impl Terminal {
                 break;
             }
             let mut chunk = [0u8; 256];
+            #[cfg(not(windows))]
             let n = match rustix::io::read(self.io.read_fd(), &mut chunk) {
                 Ok(n) => n,
                 Err(rustix::io::Errno::INTR) => continue,
                 Err(e) => return Err(e.into()),
             };
+            #[cfg(windows)]
+            let n = self.io.read(&mut chunk)?;
             if n == 0 {
                 break;
             }
@@ -1008,11 +1400,14 @@ impl Terminal {
                 return Ok(None);
             }
             let mut chunk = [0u8; 64];
+            #[cfg(not(windows))]
             let n = match rustix::io::read(self.io.read_fd(), &mut chunk) {
                 Ok(n) => n,
                 Err(rustix::io::Errno::INTR) => continue,
                 Err(e) => return Err(e.into()),
             };
+            #[cfg(windows)]
+            let n = self.io.read(&mut chunk)?;
             if n == 0 {
                 return Ok(None);
             }
@@ -1119,6 +1514,7 @@ enum FrameTransport {
     File,
     Shared,
     Inline,
+    Iterm,
 }
 
 static NEXT_TERMINAL_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -1148,46 +1544,38 @@ fn parse_probe_reply(buf: &[u8], needle: &[u8]) -> Option<bool> {
 #[allow(unsafe_code)]
 pub(crate) struct FrameFile {
     path: std::path::PathBuf,
-    map: std::ptr::NonNull<u8>,
+    map: Option<memmap2::MmapMut>,
     len: usize,
 }
 
 #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
 impl FrameFile {
     pub(crate) fn create(path: std::path::PathBuf, len: usize) -> io::Result<Self> {
-        use std::os::unix::fs::OpenOptionsExt;
         let _ = std::fs::remove_file(&path);
-        let file = std::fs::File::options()
-            .mode(0o600)
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(&path)?;
-        rustix::fs::ftruncate(&file, len as u64)?;
-        let map = unsafe {
-            rustix::mm::mmap(
-                std::ptr::null_mut(),
-                len,
-                rustix::mm::ProtFlags::READ | rustix::mm::ProtFlags::WRITE,
-                rustix::mm::MapFlags::SHARED,
-                &file,
-                0,
-            )?
-        };
-        let map = std::ptr::NonNull::new(map.cast::<u8>())
-            .ok_or_else(|| io::Error::other("frame file mapped to nothing"))?;
-        unsafe { std::ptr::write_bytes(map.as_ptr(), 0, len) };
-        Ok(Self { path, map, len })
+        let mut options = std::fs::File::options();
+        options.read(true).write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.mode(0o600);
+        }
+        let file = options.open(&path)?;
+        file.set_len(len as u64)?;
+        let mut map = unsafe { memmap2::MmapOptions::new().len(len).map_mut(&file)? };
+        map.fill(0);
+        Ok(Self { path, map: Some(map), len })
     }
 
     pub(crate) fn write(&mut self, data: &[u8]) {
-        unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), self.map.as_ptr(), self.len) };
+        self.map.as_mut().expect("frame mapping is open").copy_from_slice(data);
     }
 
+    #[cfg(not(windows))]
     pub(crate) fn len(&self) -> usize {
         self.len
     }
 
+    #[cfg(not(windows))]
     pub(crate) fn path(&self) -> &std::path::Path {
         &self.path
     }
@@ -1196,14 +1584,13 @@ impl FrameFile {
 #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
 impl Drop for FrameFile {
     fn drop(&mut self) {
-        unsafe {
-            let _ = rustix::mm::munmap(self.map.as_ptr().cast(), self.len);
-        }
+        drop(self.map.take());
         let _ = std::fs::remove_file(&self.path);
     }
 }
 
 #[allow(unsafe_code)]
+#[cfg(not(windows))]
 pub(crate) fn write_shm(name: &str, data: &[u8]) -> io::Result<()> {
     let fd = rustix::shm::open(
         name,
@@ -1228,14 +1615,23 @@ pub(crate) fn write_shm(name: &str, data: &[u8]) -> io::Result<()> {
 
 impl Drop for Terminal {
     fn drop(&mut self) {
+        #[cfg(not(windows))]
         if let Some(slot) = self.resize_slot.take() {
             RESIZE_WAKE_FDS[slot].store(-1, std::sync::atomic::Ordering::Release);
         }
+        #[cfg(not(windows))]
         for slot in 0..FRAME_SLOTS {
             let _ = rustix::shm::unlink(self.shm_name(slot));
         }
-        let delete = crate::kitty::kitty_delete(self.image_id, self.wrapper);
-        let _ = self.io.out().write_all(&delete);
+        if self.transport == FrameTransport::Iterm {
+            // WezTerm's iTerm2 image path has no image id we can delete.
+            // Clear the alternate screen before leaving it so the last image
+            // cannot remain over the restored shell contents.
+            let _ = self.io.out().write_all(b"\x1b[2J\x1b[H");
+        } else {
+            let delete = crate::kitty::kitty_delete(self.image_id, self.wrapper);
+            let _ = self.io.out().write_all(&delete);
+        }
         if !self.kitty_keyboard {
             let _ = self.io.out().write_all(b"\x1b[>4;0m");
         }
@@ -1246,9 +1642,11 @@ impl Drop for Terminal {
             b"\x1b[<u\x1b[?2048l\x1b[?2004l\x1b[?1004l\x1b[?1016l\x1b[?1006l\x1b[?1003l\x1b[?25h\x1b[?1049l",
         );
         let _ = self.io.out().flush();
-        let _ = retry_intr(|| {
-            termios::tcsetattr(&self.io.read_fd(), OptionalActions::Flush, &self.saved)
-        });
+        restore_terminal(&self.io, &self.saved);
+        #[cfg(windows)]
+        if matches!(self.io, TtyHandle::Console { .. }) {
+            LIVE_CONSOLES.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        }
     }
 }
 
@@ -1947,6 +2345,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     #[allow(unsafe_code)]
     fn shm_roundtrip() {
         let name = format!("/px-test-{}", std::process::id());
@@ -2477,7 +2876,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(windows)))]
 mod tty_tests {
     use super::*;
 

@@ -82,20 +82,42 @@ pub fn image_path_from_paste(text: &str) -> Option<PastedImage> {
     }
     let unquoted = trimmed.trim_matches(|c| c == '\'' || c == '"');
     let path = match unquoted.strip_prefix("file://") {
-        Some(rest) => percent_decode(rest),
+        Some(rest) => file_url_path(rest),
         None => unescape(unquoted),
     };
-    if !path.starts_with('/') && !path.starts_with('~') {
-        return None;
-    }
     let path = match path.strip_prefix("~/") {
-        Some(rest) => Path::new(&std::env::var("HOME").ok()?).join(rest),
+        Some(rest) => Path::new(&home_dir()?).join(rest),
         None => PathBuf::from(path),
     };
-    if !path.is_file() {
+    if !path.is_absolute() || !path.is_file() {
         return None;
     }
     from_file(&path, PasteSource::File)
+}
+
+fn home_dir() -> Option<String> {
+    std::env::var("HOME")
+        .ok()
+        .or_else(|| std::env::var("USERPROFILE").ok())
+}
+
+fn file_url_path(path: &str) -> String {
+    let decoded = percent_decode(path);
+    #[cfg(windows)]
+    {
+        let decoded = decoded.replace('/', "\\");
+        if decoded.starts_with('\\')
+            && decoded.as_bytes().get(2) == Some(&b':')
+            && decoded.as_bytes().get(1).is_some_and(u8::is_ascii_alphabetic)
+        {
+            return decoded[1..].to_owned();
+        }
+        decoded
+    }
+    #[cfg(not(windows))]
+    {
+        decoded
+    }
 }
 
 fn unescape(s: &str) -> String {
@@ -104,6 +126,10 @@ fn unescape(s: &str) -> String {
     while let Some(c) = chars.next() {
         if c == '\\' {
             if let Some(next) = chars.next() {
+                #[cfg(windows)]
+                if !next.is_whitespace() && next != '\'' && next != '"' {
+                    out.push(c);
+                }
                 out.push(next);
             }
         } else {

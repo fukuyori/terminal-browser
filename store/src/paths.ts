@@ -37,6 +37,11 @@ function physical(dir: string): string {
 export const INSTALL_ROOT = installRoot();
 
 const suffix = crypto.createHash("sha256").update(INSTALL_ROOT.root).digest("hex").slice(0, 8);
+const pipeScope = crypto
+  .createHash("sha256")
+  .update(`${HOME}\0${INSTALL_ROOT.root}`)
+  .digest("hex")
+  .slice(0, 16);
 
 export const APP_DIR_NAME = `terminal-browser${INSTALL_ROOT.dev ? "-dev" : ""}-${suffix}`;
 
@@ -45,8 +50,22 @@ export const LOGS_DIR = path.join(STATE_HOME, APP_DIR_NAME, "logs");
 export const FAVICONS_DIR = path.join(CACHE_HOME, APP_DIR_NAME, "favicons");
 export const INSTANCES_DIR = path.join(RUNTIME_HOME, APP_DIR_NAME, "instances");
 export const AGENT_SOCKETS_DIR = path.join(RUNTIME_HOME, APP_DIR_NAME, "agent-browser");
-export const DAEMON_SOCKET = path.join(RUNTIME_HOME, APP_DIR_NAME, "daemon.sock");
+// A daemon can only draw into one console at a time, so on Windows each terminal
+// pane gets its own.
+const consoleScope = () =>
+  (process.env.WEZTERM_PANE ?? process.env.WT_SESSION ?? "default").replaceAll(
+    /[^a-zA-Z0-9_-]/g,
+    "_",
+  );
+const daemonScope = process.platform === "win32" ? `daemon-${consoleScope()}` : "daemon";
+export const DAEMON_SOCKET = ipcEndpoint(daemonScope);
 export const DB_FILE = path.join(DATA_DIR, "terminal-browser.db");
+
+export function ipcEndpoint(name: string): string {
+  return process.platform === "win32"
+    ? `\\\\.\\pipe\\terminal-browser-${pipeScope}-${name}`
+    : path.join(RUNTIME_HOME, APP_DIR_NAME, `${name}.sock`);
+}
 
 export function ensureDataDir(): void {
   fs.mkdirSync(DATA_DIR, { recursive: true });
