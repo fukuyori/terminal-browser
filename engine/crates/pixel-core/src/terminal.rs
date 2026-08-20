@@ -387,6 +387,7 @@ pub struct Terminal {
     herdr_target: Option<crate::herdr::HerdrTarget>,
     herdr_retry: Option<(Instant, Duration)>,
     frame_files: Vec<FrameFile>,
+    retired_frame_files: Vec<FrameFile>,
     frame_seq: u64,
     wrapper: Wrapper,
     image_id: u32,
@@ -606,6 +607,7 @@ impl Terminal {
             herdr_target: crate::herdr::HerdrTarget::from_env(&env),
             herdr_retry: None,
             frame_files: Vec::new(),
+            retired_frame_files: Vec::new(),
             frame_seq: 0,
             wrapper,
             image_id: frame_image_id(wrapper.relayed()),
@@ -783,12 +785,15 @@ impl Terminal {
     }
 
     fn write_frame_file(&mut self, data: &[u8]) -> io::Result<String> {
+        // A terminal opens a frame file only once it reads the escape naming it, so
+        // resizing keeps the files the last frame points at until this one is out.
+        self.retired_frame_files.clear();
         if self
             .frame_files
             .first()
             .is_none_or(|file| file.len != data.len())
         {
-            self.frame_files.clear();
+            self.retired_frame_files = std::mem::take(&mut self.frame_files);
             let generation = self.frame_seq;
             for slot in 0..FRAME_SLOTS {
                 self.frame_files
