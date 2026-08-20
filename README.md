@@ -5,19 +5,13 @@ A real browser that runs inside your terminal
 
 ### Windows support (experimental)
 
-This fork adds a native Windows x64 build and portable package. It has been tested in
-PowerShell 7 with WezTerm nightly. For the fastest rendering path, enable the kitty
-keyboard and graphics protocols in `wezterm.lua`, then restart WezTerm:
+This fork adds a native Windows x64 build. It has been tested in PowerShell 7 with WezTerm
+nightly. For the fastest rendering path, enable the kitty keyboard and graphics protocols in
+`wezterm.lua`, then restart WezTerm:
 
 ```lua
 config.enable_kitty_keyboard = true
 config.enable_kitty_graphics = true
-```
-
-After building the package, launch it with:
-
-```powershell
-.\dist-release\terminal-browser\bin\terminal-browser.cmd https://example.com
 ```
 
 Press `Ctrl+Q` to quit. If `Ctrl+Q` is assigned to WezTerm as a leader key, use
@@ -49,27 +43,50 @@ curl -fsSl https://terminal-browser.sh/install | bash
 
 ### Install on Windows with the installer (experimental)
 
-1. Install WezTerm nightly and enable the kitty keyboard and graphics settings described
-   above. The terminal-browser installer does not install or configure WezTerm itself.
-2. Download `terminal-browser-<version>-windows-x64.exe` from the releases page, then run it.
-   Windows may display a SmartScreen warning until the release has been downloaded enough
-   times.
-3. Select English or Japanese, review the license, and choose the install options. The default
-   per-user destination is `%LOCALAPPDATA%\Programs\terminal-browser`; administrator rights
-   are not required.
-4. Keep **Add terminal-browser to the user PATH** selected to run `terminal-browser` from a
-   terminal. If WezTerm is already installed, the installer can also create a WezTerm Start
-   menu shortcut.
-5. Open a new WezTerm window after installation, then launch the browser from the shortcut or
-   run:
+Every Windows release is published as an installer on this fork's
+[releases page](https://github.com/fukuyori/terminal-browser/releases), named
+`terminal-browser-<version>-windows-x64.exe`.
+
+terminal-browser draws with the kitty graphics protocol, so it needs a terminal that speaks
+it. Install WezTerm nightly first and apply the settings above — the installer neither
+installs nor configures WezTerm.
+
+1. Download the installer and run it. Windows may show a SmartScreen warning until the
+   release has been downloaded enough times; choose **More info > Run anyway**.
+2. Pick English or Japanese, then accept the license.
+3. Choose where to install. The default is `%LOCALAPPDATA%\Programs\terminal-browser`, a
+   per-user location that needs no administrator rights.
+4. Choose the additional tasks:
+   - **Add terminal-browser to the user PATH** — keep this to launch by name from any
+     terminal. It takes effect in terminals opened after the install.
+   - **Create a Start menu shortcut for WezTerm** — offered only when WezTerm is already
+     installed. The shortcut opens a WezTerm window with terminal-browser running in it.
+
+The installer does not launch the browser when it finishes.
+
+### Launch it
+
+Open a **new** WezTerm window, so it picks up the `PATH` the installer wrote, then:
 
 ```powershell
-terminal-browser https://example.com
+terminal-browser                        # opens the browser
+terminal-browser https://example.com    # opens a url
 ```
 
-To uninstall it, open **Settings > Apps > Installed apps**, select `terminal-browser`, and
-choose **Uninstall**. The Start menu uninstall shortcut performs the same operation. The
-uninstaller removes the PATH entry that was added during installation.
+The Start menu entry **terminal-browser (WezTerm)** does the same in a fresh WezTerm window.
+
+If `terminal-browser` is not found, the window predates the install — open another one. To run
+it without touching `PATH` at all, call the launcher directly:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\terminal-browser\bin\terminal-browser.cmd" https://example.com
+```
+
+### Uninstall
+
+Open **Settings > Apps > Installed apps**, select `terminal-browser`, and choose
+**Uninstall**; the Start menu uninstall shortcut does the same. It removes the `PATH` entry
+the installer added.
 
 ### Build Windows from source (experimental)
 
@@ -78,17 +95,16 @@ corepack pnpm install --frozen-lockfile
 .\scripts\build-windows.ps1
 ```
 
-The build writes `dist-release\terminal-browser`, which runs in place: start
-`bin\terminal-browser.cmd` from a terminal that supports the kitty graphics protocol. Add
-`-Zip` to also pack that directory into `dist-release\terminal-browser-win32-x64.zip` for
-people who want a portable copy — it compresses about 190 MB and nothing in the build needs
-it, so it is off by default. Add `-AgentBrowserPath C:\path\to\agent-browser.exe` to include
-the optional `action` command dependency.
+The build writes `dist-release\terminal-browser`. Add `-Zip` to also pack that directory into
+`dist-release\terminal-browser-win32-x64.zip` for people who want a portable copy — it
+compresses about 190 MB and nothing in the build needs it, so it is off by default. Add
+`-AgentBrowserPath C:\path\to\agent-browser.exe` to include the optional `action` command
+dependency.
 
 `installer\terminal-browser.iss` describes the released installer: English and Japanese, a
 per-user install, an optional `PATH` entry, and a WezTerm Start menu shortcut. Compiling it
-takes Inno Setup 6 and happens on the machine that cuts releases, so it is not part of a
-source build.
+takes Inno Setup 6 and happens on the machine that cuts releases, which then publishes the
+`.exe` to the releases page, so it is not part of a source build.
 
 ### Versioning
 

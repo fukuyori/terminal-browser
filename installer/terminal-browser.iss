@@ -52,8 +52,6 @@ english.CreateWezTermShortcut=Create a Start menu shortcut for WezTerm
 japanese.CreateWezTermShortcut=WezTerm 用のスタートメニューショートカットを作成する
 english.AdditionalTasks=Additional tasks:
 japanese.AdditionalTasks=追加タスク:
-english.LaunchInWezTerm=Launch terminal-browser in WezTerm
-japanese.LaunchInWezTerm=terminal-browser を WezTerm で起動する
 english.UninstallShortcut=Uninstall terminal-browser
 japanese.UninstallShortcut=terminal-browser をアンインストール
 
@@ -68,9 +66,6 @@ Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{group}\terminal-browser (WezTerm)"; Filename: "{code:GetWezTermPath}"; Parameters: "start --always-new-process --cwd ""{%USERPROFILE}"" -- cmd.exe /d /c """"{app}\bin\terminal-browser.cmd"""""; WorkingDir: "{%USERPROFILE}"; Tasks: startmenu; Check: HasWezTerm
 Name: "{group}\{cm:UninstallShortcut}"; Filename: "{uninstallexe}"; Tasks: startmenu; Check: HasWezTerm
-
-[Run]
-Filename: "{code:GetWezTermPath}"; Parameters: "start --always-new-process --cwd ""{%USERPROFILE}"" -- cmd.exe /d /c """"{app}\bin\terminal-browser.cmd"""""; Description: "{cm:LaunchInWezTerm}"; Flags: nowait postinstall skipifsilent; Check: HasWezTerm
 
 [Code]
 const
