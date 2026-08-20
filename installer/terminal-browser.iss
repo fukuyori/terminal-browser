@@ -71,22 +71,28 @@ Name: "{group}\{cm:UninstallShortcut}"; Filename: "{uninstallexe}"; Tasks: start
 const
   UserEnvironmentKey = 'Environment';
 
+// wezterm.exe is a console program, so a shortcut to it opens a console window
+// that then shows wezterm's own log output. wezterm-gui.exe takes the same
+// arguments without one.
 function GetWezTermPath(Param: String): String;
+var
+  Directory: String;
 begin
   if RegQueryStringValue(HKCU,
-       'Software\Microsoft\Windows\CurrentVersion\App Paths\wezterm.exe', '', Result) and
-     FileExists(Result) then
-    Exit;
-  if RegQueryStringValue(HKLM,
-       'Software\Microsoft\Windows\CurrentVersion\App Paths\wezterm.exe', '', Result) and
-     FileExists(Result) then
-    Exit;
+       'Software\Microsoft\Windows\CurrentVersion\App Paths\wezterm.exe', '', Directory) or
+     RegQueryStringValue(HKLM,
+       'Software\Microsoft\Windows\CurrentVersion\App Paths\wezterm.exe', '', Directory) then
+  begin
+    Result := AddBackslash(ExtractFileDir(Directory)) + 'wezterm-gui.exe';
+    if FileExists(Result) then
+      Exit;
+  end;
 
-  Result := ExpandConstant('{pf}\WezTerm\wezterm.exe');
+  Result := ExpandConstant('{pf}\WezTerm\wezterm-gui.exe');
   if FileExists(Result) then
     Exit;
 
-  Result := ExpandConstant('{localappdata}\Programs\WezTerm\wezterm.exe');
+  Result := ExpandConstant('{localappdata}\Programs\WezTerm\wezterm-gui.exe');
   if FileExists(Result) then
     Exit;
 
