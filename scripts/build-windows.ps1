@@ -3,6 +3,7 @@ param(
     [string]$Version = "0.5.8-win.1",
     [string]$Channel = "windows",
     [string]$AgentBrowserPath = "",
+    [switch]$Sign,
     [switch]$Zip
 )
 
@@ -111,6 +112,12 @@ set "TERMINAL_BROWSER_DIST_ROOT=%~dp0.."
 Set-Content -LiteralPath (Join-Path $stage "bin\terminal-browser.cmd") -Value $launcher -Encoding ascii
 Set-Content -LiteralPath (Join-Path $stage "VERSION") -Value $Version -Encoding ascii
 Set-Content -LiteralPath (Join-Path $stage "CHANNEL") -Value $Channel -Encoding ascii
+
+# Before the zip, so a portable copy carries the signatures too. The installer
+# signs itself at packaging time, once these are inside it.
+if ($Sign) {
+    & (Join-Path $PSScriptRoot "sign-windows.ps1")
+}
 
 if (-not $Zip) {
     Write-Output $stage
