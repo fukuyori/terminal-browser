@@ -98,6 +98,16 @@ export class PageInput {
 
   wheel(event: WheelEvent) {
     this.syncFocus();
+    // A wheel report carries the pointer position, and on a terminal that
+    // reports buttons but not motion it is the only place that position
+    // arrives — a multiplexer in the middle is enough for that. Reading it
+    // here means the wheel lands under the pointer either way. Going by the
+    // last move instead leaves it at wherever the pointer was last seen, or at
+    // the top-left of the page if it never was: in the workbench that is the
+    // activity bar, which does not scroll, so nothing moves at all.
+    const scale = this.target.scale();
+    this.lastX = Math.max(0, Math.round(event.x / scale));
+    this.lastY = Math.max(0, Math.round(event.y / scale));
     if (event.mods.ctrl && event.precise) {
       this.pinch(event);
       return;
@@ -106,7 +116,6 @@ export class PageInput {
       this.wheelTick(event);
       return;
     }
-    const scale = this.target.scale();
     this.wheelRemainderX += -event.deltaX / scale;
     this.wheelRemainderY += -event.deltaY / scale;
     const deltaX = wholeDelta(this.wheelRemainderX);

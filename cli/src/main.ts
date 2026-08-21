@@ -158,6 +158,7 @@ function sessionEnvironment(): NodeJS.ProcessEnv {
       execFileSync("wezterm", ["cli", "list", "--format", "json"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
       }),
     ) as Array<{
       pane_id: number;
