@@ -45,7 +45,6 @@ export function callerTty(): CallerTty {
   return { path: null, denied: false };
 }
 
-
 export function setPaneWorkingDirectory(tty: string, directory: string): void {
   const encoded = directory.split("/").map(encodeURIComponent).join("/");
   fs.writeFileSync(tty, `\x1b]7;file://${os.hostname()}${encoded}\x07`);
@@ -68,3 +67,12 @@ export function shellQuote(argv: string[]): string {
 }
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export function shellLiteral(text: string): string {
+  return `'${text.replace(/['\\]/g, (char) => (char === "'" ? "'\\''" : "'\\\\'"))}'`;
+}
+
+export function bracketedPaste(text: string): string {
+  if (!text.includes("\n")) return text;
+  return `\x1b[200~${text.replaceAll("\x1b[201~", "")}\x1b[201~`;
+}

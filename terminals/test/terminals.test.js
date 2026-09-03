@@ -40,6 +40,25 @@ for (const file of fs.readdirSync(FIXTURES)) {
   });
 }
 
+test("wezterm resolves a Windows console id and exposes pane titles", async () => {
+  const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES, "wezterm.json"), "utf8"));
+  const { run } = recorder(fixture.exec);
+  const terminal = detect(fixture.env, run);
+  assert.deepEqual(await terminal.getCurrentPane({ tty: "CONIN$#8", cwd: "C:\\work" }), {
+    id: "8",
+    tab: "0:3",
+  });
+  assert.deepEqual(await terminal.listPanes(), [
+    {
+      id: "7",
+      tab: "0:2",
+      tty: null,
+      command: "terminal-browser:90107-1",
+    },
+    { id: "8", tab: "0:3", tty: null, command: "zsh" },
+  ]);
+});
+
 test("an unknown terminal is nobody", () => {
   assert.equal(detect({ TERM: "xterm-256color" }, async () => ""), null);
 });

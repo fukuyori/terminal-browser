@@ -42,7 +42,8 @@ $directories = @(
     "browser\native",
     "electron",
     "runtime",
-    "assets\fonts"
+    "assets\fonts",
+    "assets\react-grab"
 )
 foreach ($directory in $directories) {
     New-Item -ItemType Directory -Path (Join-Path $stage $directory) -Force | Out-Null
@@ -78,6 +79,16 @@ Bundle (Join-Path $root "cli\src\main.ts") (Join-Path $stage "cli\dist\main.js")
 Bundle (Join-Path $root "browser\src\main.tsx") (Join-Path $stage "browser\dist\main.js")
 
 Copy-Item -LiteralPath (Join-Path $root "assets\fonts\JetBrainsMono-Regular.ttf") -Destination (Join-Path $stage "assets\fonts")
+
+node (Join-Path $root "scripts\copy-react-grab.mjs")
+if ($LASTEXITCODE -ne 0) { throw "react-grab asset copy failed" }
+foreach ($asset in @("index.global.js", "logo.png")) {
+    $source = Join-Path $root "assets\react-grab\$asset"
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "missing react-grab asset: $source"
+    }
+    Copy-Item -LiteralPath $source -Destination (Join-Path $stage "assets\react-grab")
+}
 
 $electronDist = Join-Path $root "browser\node_modules\electron\dist"
 $electron = Join-Path $electronDist "electron.exe"
