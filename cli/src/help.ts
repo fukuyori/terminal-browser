@@ -18,6 +18,13 @@ The url can be a normal url, a localhost port, or a path to an html file.
 Options:
   --split <direction>   Open in a new pane: right, left, down, up
   --size <fraction>     How much of the space the split takes (0.2 to 0.95)
+  --ssh <user@host>     Perform all network requests through a remote server, then
+                        proxy the result back to the local terminal-browser instance
+  --ssh-bundle <dir>    Install and execute a bundle on a remote Unix server. This is useful with
+                        --app-mode and --ssh, allowing an application server to run remotely
+  --ssh-bundle-dir <dir>
+                        Remote installation base for --ssh-bundle. Defaults to
+                        \${XDG_DATA_HOME:-~/.local/share}/terminal-browser/bundles
   --preload=<path>      Run a script inside the context of a web page before it loads (uses electron's preload feature under the hood, runs in an isolated world).
                         terminal-browser specific api's are exposed on globalThis.terminalBrowser
                         {
@@ -46,6 +53,7 @@ Examples:
   terminal-browser open localhost:3000
   terminal-browser open ./report.html --split right
   terminal-browser open github.com/zenbu-labs --split down --size 0.4
+  terminal-browser open --ssh dev@build-box localhost:8080
 `,
   },
   ls: {

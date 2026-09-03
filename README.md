@@ -152,6 +152,7 @@ it refuses and points at this fork's releases instead.
 terminal-browser # launches the browser
 terminal-browser open <url> # opens the browser at a url
 terminal-browser --split right # opens the browser in a split pane to the right
+terminal-browser open --ssh <user@host> <url> # proxies browser requests through a remote server
 terminal-browser ls # lists open browsers
 terminal-browser action # an agent-browser compatible cli for interacting with open terminal-browsers
 ```
@@ -198,6 +199,17 @@ After the browser engine starts and is displaying pixels in the terminal, it nee
 The outer UI of the browser is implemented using a graphics engine built on top of rust. The actual UI is defined inside react with a custom react renderer, which allows us to build the UI for the browser using typescript. The UI of the outer browser and the browser content itself is all drawn to the same shared canvas inside the rust engine, which allows us to layer UI on top of the browser.
 
 
+### SSH
+
+`terminal-browser open --ssh <user@host> <url>` keeps Chromium and rendering on the local
+computer while routing browser network requests through the remote SSH server. This also makes
+services bound to the remote server's `localhost` available to the local browser.
+
+On Windows, the OpenSSH Client and `tar.exe` must be available on `PATH`. SSH config host aliases
+work normally. `--ssh-bundle` targets a Unix remote server and may open more than one SSH
+connection on Windows, so key authentication or `ssh-agent` is recommended.
+
+
 ### App Mode
 terminal-browser can be used to build apps in the terminal using browser technology. You can reference `terminal-code` as a production usage example - https://github.com/zenbu-labs/terminal-code
 
@@ -226,6 +238,9 @@ The following options are the full set of app related options available for `ter
   --app-mode            Shorthand for --no-toolbar --no-shortcuts
                         --no-context-menu --no-overlays --no-frame
                         --allow-clipboard-read --open-tabs-in-popup-stack
+  --ssh-bundle <dir>    Install and execute a bundle on a remote Unix server
+  --ssh-bundle-dir <dir>
+                        Remote installation base for --ssh-bundle
 
 ```
 
