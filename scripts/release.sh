@@ -43,7 +43,7 @@ fi
 
 cp "$ROOT/scripts/apparmor.sh" "$STAGE/scripts/apparmor.sh"
 
-"$ROOT/scripts/generate-skill.sh"
+node "$ROOT/scripts/generate-skill.mjs"
 cp -R "$ROOT/skill/build" "$STAGE/skills"
 
 cp "$ROOT/assets/fonts/JetBrainsMono-Regular.ttf" "$STAGE/assets/fonts/"

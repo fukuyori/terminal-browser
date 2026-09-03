@@ -42,6 +42,7 @@ $directories = @(
     "browser\native",
     "electron",
     "runtime",
+    "skills",
     "assets\fonts",
     "assets\react-grab"
 )
@@ -77,6 +78,10 @@ function Bundle([string]$Source, [string]$Destination) {
 
 Bundle (Join-Path $root "cli\src\main.ts") (Join-Path $stage "cli\dist\main.js")
 Bundle (Join-Path $root "browser\src\main.tsx") (Join-Path $stage "browser\dist\main.js")
+
+node (Join-Path $root "scripts\generate-skill.mjs")
+if ($LASTEXITCODE -ne 0) { throw "skill generation failed" }
+Copy-Item -Path (Join-Path $root "skill\build\*") -Destination (Join-Path $stage "skills") -Recurse -Force
 
 Copy-Item -LiteralPath (Join-Path $root "assets\fonts\JetBrainsMono-Regular.ttf") -Destination (Join-Path $stage "assets\fonts")
 

@@ -28,6 +28,7 @@ import type { Direction, Terminal, TerminalCheck } from "pixel-terminals";
 import { actionCommand } from "./action";
 import { control } from "./control";
 import { setupCommand } from "./editors";
+import { ensureSetup, linkSkills, markSetupDone } from "./setup";
 import { commandHelp, helpTopics, rootHelp } from "./help";
 import { browsers, describe, recordKey } from "./instances";
 import type { Browser } from "./instances";
@@ -706,6 +707,7 @@ async function main(): Promise<number> {
     process.stdout.write(commandHelp(command) ?? rootHelp());
     return 0;
   }
+  if (command !== "setup") ensureSetup();
   if (command === "open") {
     await openCommand(args);
     return 0;
@@ -719,7 +721,15 @@ async function main(): Promise<number> {
   }
   if (command === "setup") {
     const sandbox = apparmorSetup(electronBinary());
+    const skills = linkSkills();
+    if (skills.linkedPaths.length > 0) {
+      process.stdout.write(`installed agent skills (${skills.linkedPaths.length})\n`);
+    }
+    for (const file of skills.left) {
+      process.stdout.write(`left ${file} unchanged because it is not a link\n`);
+    }
     const editors = setupCommand();
+    markSetupDone();
     return editors !== 0 ? editors : sandbox;
   }
   if (command === "upgrade") return upgradeCommand();

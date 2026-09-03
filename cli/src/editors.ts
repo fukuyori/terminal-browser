@@ -13,11 +13,24 @@ export interface EditorResult {
   error?: string;
 }
 
+export function editorSupportDir(
+  platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  home = os.homedir(),
+): string {
+  if (platform === "darwin") return path.join(home, "Library", "Application Support");
+  if (platform === "win32") {
+    return env.APPDATA && path.isAbsolute(env.APPDATA)
+      ? env.APPDATA
+      : path.join(home, "AppData", "Roaming");
+  }
+  return env.XDG_CONFIG_HOME && path.isAbsolute(env.XDG_CONFIG_HOME)
+    ? env.XDG_CONFIG_HOME
+    : path.join(home, ".config");
+}
+
 function userDirs(): { name: string; dir: string }[] {
-  const support =
-    process.platform === "darwin"
-      ? path.join(os.homedir(), "Library", "Application Support")
-      : (process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config"));
+  const support = editorSupportDir();
   let names: string[];
   try {
     names = fs.readdirSync(support);
