@@ -38,8 +38,8 @@ foreach ($relativePath in $required) {
 }
 
 if (-not $Version) {
-    # A Windows file version is four numbers, so the fork revision of v0.5.8-win.3
-    # becomes the fourth one: 0.5.8.3. A dev build has no number to carry over.
+    # A Windows file version is four numbers, so the fork revision of 0.8.0-win.1
+    # becomes the fourth one: 0.8.0.1. A dev build has no number to carry over.
     $payloadVersion = (Get-Content -LiteralPath (Join-Path $payload "VERSION") -Raw).Trim()
     $match = [regex]::Match($payloadVersion, '^v?(?<base>\d+\.\d+\.\d+)(?:-win\.(?<fork>\d+))?$')
     if ($match.Success) {
@@ -52,7 +52,7 @@ if (-not $Version) {
 }
 
 if ($Version -notmatch '^\d+\.\d+\.\d+(?:\.\d+)?$') {
-    throw "Inno Setup requires a numeric version such as 0.5.8.3; got: $Version"
+    throw "Inno Setup requires a numeric version such as 0.8.0.1; got: $Version"
 }
 
 if (-not $IsccPath) {

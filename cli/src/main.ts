@@ -391,6 +391,7 @@ async function attachHere(argv: string[]): Promise<never> {
   };
   process.on("SIGINT", requestClose);
   process.on("SIGTERM", requestClose);
+  process.on("SIGHUP", requestClose);
   return new Promise<never>(() => {});
 }
 

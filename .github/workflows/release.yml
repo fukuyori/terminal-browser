@@ -3,7 +3,7 @@ name: release
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v*", "*-win.*"]
   workflow_dispatch:
     inputs:
       bump:
@@ -20,8 +20,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ (startsWith(github.ref, 'refs/tags/v') || inputs.bump != 'none') && 'stable' || 'dev' }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') && (inputs.bump == '' || inputs.bump == 'none') }}
+  group: release-${{ (startsWith(github.ref, 'refs/tags/') || inputs.bump != 'none') && 'stable' || 'dev' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && (inputs.bump == '' || inputs.bump == 'none') }}
 
 jobs:
   prepare:
@@ -40,7 +40,7 @@ jobs:
         id: v
         run: |
           BUMP="${{ inputs.bump }}"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             CHANNEL=stable
             VERSION="${GITHUB_REF#refs/tags/}"
             REF="$VERSION"
@@ -77,6 +77,8 @@ jobs:
         include:
           - target: darwin-arm64
             runner: [self-hosted, macOS, ARM64]
+          - target: darwin-x64
+            runner: macos-26-intel
           - target: linux-x64
             runner: ubuntu-22.04
           - target: linux-arm64
@@ -89,20 +91,30 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
 
+      # the self-hosted mac has its toolchains pre-provisioned
       - uses: pnpm/action-setup@v4
-        if: runner.os == 'Linux'
+        if: matrix.target != 'darwin-arm64'
 
       - uses: actions/setup-node@v4
-        if: runner.os == 'Linux'
+        if: matrix.target != 'darwin-arm64'
         with:
           node-version: 22
 
       - uses: dtolnay/rust-toolchain@stable
-        if: runner.os == 'Linux'
+        if: matrix.target != 'darwin-arm64'
+
+      - run: brew install nasm
+        if: matrix.target == 'darwin-x64'
 
       - run: pnpm install --frozen-lockfile
 
       - name: Build
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: scripts/release.sh "${{ needs.prepare.outputs.version }}" "${{ needs.prepare.outputs.channel }}"
 
       - uses: actions/upload-artifact@v4
@@ -297,7 +309,7 @@ jobs:
         with:
           node-version: 22
       - name: Deploy worker
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (inputs.bump != '' && inputs.bump != 'none') || inputs.deploy_worker
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || (inputs.bump != '' && inputs.bump != 'none') || inputs.deploy_worker
         working-directory: release-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

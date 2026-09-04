@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.5.8-win.1",
+    [string]$Version = "0.8.0-win.1",
     [string]$Channel = "windows",
     [string]$AgentBrowserPath = "",
     [switch]$Sign,

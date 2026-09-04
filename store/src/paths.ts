@@ -36,7 +36,15 @@ function physical(dir: string): string {
 
 export const INSTALL_ROOT = installRoot();
 
-const suffix = crypto.createHash("sha256").update(INSTALL_ROOT.root).digest("hex").slice(0, 8);
+function stableIdentity(root: string): string {
+  return root.replace(/([/\\]Caskroom[/\\]terminal-browser[/\\])[^/\\]+/, "$1");
+}
+
+const suffix = crypto
+  .createHash("sha256")
+  .update(stableIdentity(INSTALL_ROOT.root))
+  .digest("hex")
+  .slice(0, 8);
 const pipeScope = crypto
   .createHash("sha256")
   .update(`${HOME}\0${INSTALL_ROOT.root}`)

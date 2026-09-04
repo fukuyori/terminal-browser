@@ -38,7 +38,7 @@ Windows-specific changes in this fork include:
 ### Install (macOS & Linux):
 
 ```bash
-curl -fsSl https://terminal-browser.sh/install | bash
+curl -fsSL https://terminal-browser.sh/install | bash
 ```
 
 ### Install on Windows with the installer (experimental)
@@ -140,13 +140,13 @@ A ZIP carries no signature. Publish the `sha256` from `manifest-win32-x64.json` 
 ### Versioning
 
 A release is named after the upstream version this fork builds on plus its own revision, so
-`0.5.8-win.2` is the second Windows release built on upstream `v0.5.8`. The current one is the
+`0.8.0-win.1` is the first Windows release built on upstream `v0.8.0`. The current one is the
 `-Version` default at the top of `scripts\build-windows.ps1`; edit that line to cut a new
 release, or pass `-Version` for a one-off build. It ends up in `VERSION`, which is what
 `terminal-browser --version` prints.
 
-Inno Setup wants four numbers, so the fork revision becomes the fourth one and `0.5.8-win.2`
-installs as `0.5.8.2`. A version that does not follow this shape still packages, as `0.0.0.0`.
+Inno Setup wants four numbers, so the fork revision becomes the fourth one and `0.8.0-win.1`
+installs as `0.8.0.1`. A version that does not follow this shape still packages, as `0.0.0.0`.
 
 `terminal-browser upgrade` only installs the upstream macOS and Linux builds, so on Windows
 it refuses and points at this fork's releases instead.
@@ -156,7 +156,7 @@ it refuses and points at this fork's releases instead.
 terminal-browser # launches the browser
 terminal-browser open <url> # opens the browser at a url
 terminal-browser --split right # opens the browser in a split pane to the right
-terminal-browser open --ssh <user@host> <url> # proxies browser requests through a remote server
+terminal-browser open --ssh <user@host> <url> # performs all network requests through a remote server
 terminal-browser ls # lists open browsers
 terminal-browser action # an agent-browser compatible cli for interacting with open terminal-browsers
 ```
@@ -202,12 +202,14 @@ After the browser engine starts and is displaying pixels in the terminal, it nee
 
 The outer UI of the browser is implemented using a graphics engine built on top of rust. The actual UI is defined inside react with a custom react renderer, which allows us to build the UI for the browser using typescript. The UI of the outer browser and the browser content itself is all drawn to the same shared canvas inside the rust engine, which allows us to layer UI on top of the browser.
 
-
 ### SSH
-
 `terminal-browser open --ssh <user@host> <url>` keeps Chromium and rendering on the local
 computer while routing browser network requests through the remote SSH server. This also makes
 services bound to the remote server's `localhost` available to the local browser.
+
+Running terminal-browser directly inside an SSH session also works, but every rendered frame and
+all user input must cross the network, and the terminal cannot use the kitty graphics protocol's
+[local-client optimizations](https://sw.kovidgoyal.net/kitty/graphics-protocol/#local-client).
 
 On Windows, the OpenSSH Client and `tar.exe` must be available on `PATH`. SSH config host aliases
 work normally. `--ssh-bundle` targets a Unix remote server and may open more than one SSH
@@ -242,12 +244,14 @@ The following options are the full set of app related options available for `ter
   --app-mode            Shorthand for --no-toolbar --no-shortcuts
                         --no-context-menu --no-overlays --no-frame
                         --allow-clipboard-read --open-tabs-in-popup-stack
-  --ssh-bundle <dir>    Install and execute a bundle on a remote Unix server
+  --ssh-bundle <dir>    Install and execute a bundle on a remote Unix server. This is useful with
+                        --app-mode and --ssh, allowing you to run an application server on a
+                        remote machine, then view the output over ssh
   --ssh-bundle-dir <dir>
-                        Remote installation base for --ssh-bundle
+                        Remote installation base for --ssh-bundle. Defaults to
+                        ${XDG_DATA_HOME:-~/.local/share}/terminal-browser/bundles
 
 ```
-
 
 ### Roadmap
 - linux support ✅
