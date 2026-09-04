@@ -125,7 +125,7 @@ $launcher = @'
 @echo off
 setlocal
 set "TERMINAL_BROWSER_DIST_ROOT=%~dp0.."
-"%TERMINAL_BROWSER_DIST_ROOT%\runtime\node.exe" "%TERMINAL_BROWSER_DIST_ROOT%\cli\dist\main.js" %*
+"%TERMINAL_BROWSER_DIST_ROOT%\runtime\node.exe" --disable-warning=ExperimentalWarning "%TERMINAL_BROWSER_DIST_ROOT%\cli\dist\main.js" %*
 '@
 Set-Content -LiteralPath (Join-Path $stage "bin\terminal-browser.cmd") -Value $launcher -Encoding ascii
 Set-Content -LiteralPath (Join-Path $stage "VERSION") -Value $Version -Encoding ascii
