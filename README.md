@@ -1,94 +1,106 @@
-# terminal-browser
+# terminal-browser for Windows
 
+[日本語](README.ja.md) · [Changelog](CHANGELOG.md)
 
-A real browser that runs inside your terminal
+A real browser that runs inside your Windows terminal.
 
-### Windows support (experimental)
+<video src="https://github.com/user-attachments/assets/abe2f43e-fc50-4866-b753-33388967945d" controls></video>
 
-This fork adds a native Windows x64 build. It has been tested in PowerShell 7 with WezTerm
-nightly. For the fastest rendering path, enable the kitty keyboard and graphics protocols in
-`wezterm.lua`, then restart WezTerm:
+## Relationship to the original project
+
+This repository is a Windows-specific fork of
+[zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser). The current
+release is based on upstream v0.8.0. This README covers the Windows fork only; documentation for
+other platforms remains in the original project.
+
+| Area | Upstream v0.8.0 | This Windows fork |
+| --- | --- | --- |
+| Runtime | Original terminal and process integrations | Windows x64 port using Win32 Console, ConPTY, named pipes, and Windows paths |
+| Graphics | Kitty graphics rendering | WezTerm file-frame transport and a Windows-specific iTerm2 PNG fallback |
+| Distribution | Original release process | Inno Setup installer, versioned portable ZIP, Authenticode signing, and automated Windows release jobs |
+| SSH and setup | Original SSH and skill workflows | Windows OpenSSH and `tar.exe` handling, plus Windows-compatible skill setup |
+| Version | `v0.8.0` | `0.8.0-win.1`, identifying the upstream base and Windows revision |
+
+Features incorporated from upstream and changes unique to each Windows release are listed in the
+[changelog](CHANGELOG.md).
+
+## Windows support (experimental)
+
+This fork provides a native Windows x64 build. It has been tested with PowerShell 7 and
+WezTerm nightly.
+
+Windows support includes:
+
+- A per-user installer and an optional portable ZIP containing Electron, Node.js,
+  `pixel.node`, `agent-browser`, and a `.cmd` launcher
+- Win32 Console and ConPTY input, resize, mouse-coordinate, wake-up, and terminal-restore handling
+- Windows named pipes for daemon and session IPC
+- Native Windows path, executable, clipboard-image, and `file://` handling
+- Fast kitty file-frame transport with WezTerm nightly
+- An iTerm2 PNG fallback when kitty graphics replies do not pass through ConPTY; this path is
+  limited to about 15 FPS, so WezTerm nightly is recommended
+- Image and screen cleanup on exit
+- SSH proxy and remote bundle support
+
+### Requirements
+
+Install WezTerm nightly. For the fastest rendering path, enable the kitty keyboard and graphics
+protocols in `wezterm.lua`, then restart WezTerm:
 
 ```lua
 config.enable_kitty_keyboard = true
 config.enable_kitty_graphics = true
 ```
 
-Press `Ctrl+Q` to quit. If `Ctrl+Q` is assigned to WezTerm as a leader key, use
-`Ctrl+Shift+Q` instead.
+The installer does not install or configure WezTerm.
 
-Windows-specific changes in this fork include:
+### Install on Windows
 
-- A Windows x64 installer, and an optional portable ZIP, carrying Electron, Node.js,
-  `pixel.node`, `agent-browser`, and a `.cmd` launcher
-- Win32 Console and ConPTY input, resize, mouse-coordinate, wake-up, and terminal-restore handling
-- Windows named pipes for daemon/session IPC and native Windows path/executable handling
-- Windows clipboard-image and `file://` path support
-- Fast kitty file-frame transport with WezTerm nightly
-- An iTerm2 PNG fallback for Windows terminals where kitty graphics replies do not pass through
-  ConPTY; this compatibility path is limited to about 15 FPS, so WezTerm nightly is recommended
-- Explicit image/screen cleanup on exit so the final browser frame does not remain over the shell
+Download `terminal-browser-<version>-windows-x64.exe` from this fork's
+[releases page](https://github.com/fukuyori/terminal-browser/releases) and run it.
 
-
-
-<video src="https://github.com/user-attachments/assets/abe2f43e-fc50-4866-b753-33388967945d" controls></video>
-
-
-
-### Install (macOS & Linux):
-
-```bash
-curl -fsSL https://terminal-browser.sh/install | bash
-```
-
-### Install on Windows with the installer (experimental)
-
-Every Windows release is published as an installer on this fork's
-[releases page](https://github.com/fukuyori/terminal-browser/releases), named
-`terminal-browser-<version>-windows-x64.exe`.
-
-terminal-browser draws with the kitty graphics protocol, so it needs a terminal that speaks
-it. Install WezTerm nightly first and apply the settings above — the installer neither
-installs nor configures WezTerm.
-
-1. Download the installer and run it. Windows may show a SmartScreen warning until the
-   release has been downloaded enough times; choose **More info > Run anyway**.
-2. Pick English or Japanese, then accept the license.
-3. Choose where to install. The default is `%LOCALAPPDATA%\Programs\terminal-browser`, a
-   per-user location that needs no administrator rights.
+1. If Windows shows a SmartScreen warning, choose **More info > Run anyway**.
+2. Select English or Japanese and accept the license.
+3. Choose the installation directory. The default is
+   `%LOCALAPPDATA%\Programs\terminal-browser`, which does not require administrator rights.
 4. Choose the additional tasks:
-   - **Add terminal-browser to the user PATH** — keep this to launch by name from any
-     terminal. It takes effect in terminals opened after the install.
-   - **Create a Start menu shortcut for WezTerm** — offered only when WezTerm is already
-     installed. The shortcut opens a WezTerm window with terminal-browser running in it.
+   - **Add terminal-browser to the user PATH** makes the command available in terminals opened
+     after installation.
+   - **Create a Start menu shortcut for WezTerm** is available when WezTerm is installed.
 
-The installer does not launch the browser when it finishes.
+The installer does not launch terminal-browser when it finishes.
 
-### Launch it
+### Launch on Windows
 
-Open a **new** WezTerm window, so it picks up the `PATH` the installer wrote, then:
+Open a new WezTerm window so it receives the updated `PATH`, then run:
 
 ```powershell
-terminal-browser                        # opens the browser
-terminal-browser https://example.com    # opens a url
+terminal-browser
+terminal-browser https://example.com
 ```
 
-The Start menu entry **terminal-browser (WezTerm)** does the same in a fresh WezTerm window.
+The Start menu entry **terminal-browser (WezTerm)** opens terminal-browser in a new WezTerm
+window.
 
-If `terminal-browser` is not found, the window predates the install — open another one. To run
-it without touching `PATH` at all, call the launcher directly:
+If the command is not found, open another terminal or call the launcher directly:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\terminal-browser\bin\terminal-browser.cmd" https://example.com
 ```
 
-### Uninstall
+### Exit on Windows
 
-Open **Settings > Apps > Installed apps**, select `terminal-browser`, and choose
-**Uninstall**; the Start menu uninstall shortcut does the same. It removes the `PATH` entry
-the installer added.
+Press `Ctrl+Q` in the terminal-browser pane. If `Ctrl+Q` is assigned to WezTerm as a leader
+key, use `Ctrl+Shift+Q`. You can also press `Ctrl+C` in the PowerShell session that launched
+terminal-browser.
 
-### Build Windows from source (experimental)
+### Uninstall on Windows
+
+Open **Settings > Apps > Installed apps**, select **terminal-browser**, and choose
+**Uninstall**. The Start menu uninstall shortcut performs the same operation. Uninstalling also
+removes the user `PATH` entry added by the installer.
+
+### Build Windows from source
 
 ```powershell
 corepack pnpm install --frozen-lockfile
@@ -96,133 +108,148 @@ corepack pnpm install --frozen-lockfile
 .\scripts\package-windows-inno.ps1
 ```
 
-The build writes `dist-release\terminal-browser`. Add `-Zip` to also pack that directory into
-`dist-release\terminal-browser-<version>-windows-x64.zip` for people who want a portable copy — it
-compresses about 190 MB and nothing in the build needs it, so it is off by default. The pinned
+The build writes the unpacked payload to `dist-release\terminal-browser`. Add `-Zip` to create
+`dist-release\terminal-browser-<version>-windows-x64.zip`:
+
+```powershell
+.\scripts\build-windows.ps1 -Zip
+```
+
+The ZIP is optional, is about 190 MB, and is not required to create the installer. The pinned
 `agent-browser` dependency is built and included automatically. Use
 `-AgentBrowserPath C:\path\to\agent-browser.exe` only to override that binary.
 
-The packaging step compiles `installer\terminal-browser.iss` into
-`dist-release\terminal-browser-<version>-windows-x64.exe` and needs Inno Setup 6. That
-installer offers English and Japanese, installs per user, can add the command to `PATH`, and
-creates a WezTerm Start menu shortcut when WezTerm is installed.
+`package-windows-inno.ps1` requires Inno Setup 6 and creates
+`dist-release\terminal-browser-<version>-windows-x64.exe`. The installer supports English and
+Japanese, installs per user, can update the user `PATH`, and can create a WezTerm shortcut.
 
-### Signing
+### Sign Windows packages
 
-Releases are signed and a plain source build is not. Both scripts take an off-by-default
-`-Sign`, and both reach for `scripts\sign-windows.ps1`, so one place knows about
-certificates:
+Local builds are unsigned unless `-Sign` is specified:
 
 ```powershell
-$env:CODESIGN_CERT = "<the certificate's subject name>"
-.\scripts\build-windows.ps1 -Sign           # unsigned payload executables
-.\scripts\package-windows-inno.ps1 -Sign    # ensure payload, installer, and uninstaller are signed
+$env:CODESIGN_CERT = "<certificate subject name>"
+.\scripts\build-windows.ps1 -Zip -Sign
+.\scripts\package-windows-inno.ps1 -Sign
 ```
 
-`CODESIGN_CERT` names the certificate to sign with: the subject name on its own, so
-`Example Ltd` for `CN=Example Ltd, O=…`. Signing stops rather than carrying on when the
-variable is unset or nothing matches it, which is also what a certificate on a token that
-nobody plugged in looks like.
+`CODESIGN_CERT` is a subject-name fragment, such as `Example Ltd` for
+`CN=Example Ltd, O=…`. `CODESIGN_CERT_THUMBPRINT` can identify the certificate by thumbprint
+instead. Signing stops if no matching code-signing certificate is available.
+
+The build signs unsigned payload executables before creating the ZIP. Packaging checks the
+payload again, then passes the signer to Inno Setup so the installer and generated uninstaller
+are signed. Files with valid signatures are skipped. Pass `-NoElectron` directly to
+`sign-windows.ps1` to leave Electron binaries as their publisher shipped them.
+
+A ZIP cannot carry an Authenticode signature. Publish the SHA-256 value from
+`manifest-windows-x64.json` with it.
 
 The release workflow builds and tests the Windows payload, ZIP, and installer on
-`windows-latest`. Stable releases require `WINDOWS_CODESIGN_PFX` containing a base64-encoded
-PFX and `WINDOWS_CODESIGN_PASSWORD`; development workflow runs remain unsigned.
+`windows-latest`. Stable releases require the `WINDOWS_CODESIGN_PFX` secret containing a
+base64-encoded PFX and the `WINDOWS_CODESIGN_PASSWORD` secret. Development workflow runs remain
+unsigned.
 
-The build signs before creating the ZIP. Packaging checks the payload again and signs any
-remaining unsigned executables before embedding them, then hands the signer to Inno Setup so
-the installer and its generated uninstaller are signed too. `sign-windows.ps1` signs everything
-in one call, so a token asks for its PIN once per step, and it passes over files that already
-carry a valid signature. Run it alone to sign named files, or pass `-NoElectron` to leave the
-Electron binaries as their publisher shipped them.
+### Windows versioning
 
-A ZIP carries no signature. Publish the `sha256` from `manifest-windows-x64.json` beside it.
+Windows fork versions combine the upstream version and a fork revision. For example,
+`0.8.0-win.1` is the first Windows release based on upstream v0.8.0.
 
-### Versioning
+Set the default with `Version` in `scripts\build-windows.ps1`, or pass `-Version` for a one-off
+build. The value is written to `VERSION` and displayed by `terminal-browser --version`.
 
-A release is named after the upstream version this fork builds on plus its own revision, so
-`0.8.0-win.1` is the first Windows release built on upstream `v0.8.0`. The current one is the
-`-Version` default at the top of `scripts\build-windows.ps1`; edit that line to cut a new
-release, or pass `-Version` for a one-off build. It ends up in `VERSION`, which is what
-`terminal-browser --version` prints.
+Inno Setup requires a numeric four-part version, so `0.8.0-win.1` becomes `0.8.0.1` in the
+installer. Versions outside this format use `0.0.0.0` for the installer version.
 
-Inno Setup wants four numbers, so the fork revision becomes the fourth one and `0.8.0-win.1`
-installs as `0.8.0.1`. A version that does not follow this shape still packages, as `0.0.0.0`.
+`terminal-browser upgrade` does not update the Windows fork. On Windows it stops and directs
+users to this fork's releases page.
 
-`terminal-browser upgrade` only installs the upstream macOS and Linux builds, so on Windows
-it refuses and points at this fork's releases instead.
+## Usage
 
-### Usage
-```
-terminal-browser # launches the browser
-terminal-browser open <url> # opens the browser at a url
-terminal-browser --split right # opens the browser in a split pane to the right
-terminal-browser open --ssh <user@host> <url> # performs all network requests through a remote server
-terminal-browser ls # lists open browsers
-terminal-browser action # an agent-browser compatible cli for interacting with open terminal-browsers
+```text
+terminal-browser
+terminal-browser open <url>
+terminal-browser --split right
+terminal-browser open --ssh <user@host> <url>
+terminal-browser ls
+terminal-browser action
 ```
 
+- `terminal-browser` launches the browser.
+- `open <url>` opens a URL.
+- `--split right` opens the browser in a pane to the right.
+- `open --ssh` routes browser network requests through a remote server.
+- `ls` lists open browsers.
+- `action` provides an agent-browser-compatible CLI for interacting with open browsers.
 
+## Use cases
 
+- Keep a coding agent and a website in the same terminal tab.
+- Let an agent interact with an open terminal-browser.
+- Open HTML plans beside an agent automatically.
+- Preview services running on a remote machine over SSH.
 
-### Use cases:
-- You can have a coding agent and website scoped to the same terminal tab
-- Your agent has full access to interact with open terminal-browsers, which gives your agent the capability to use the web
-- You can ask an agent to make HTML plans and then open them inside terminal-browser, which will automatically open in a split pane next to your agent
-- terminal-browser works over SSH, which allows you to preview websites running on remote machines easily
+## Windows shortcuts
 
-### Shortcuts
+| Action | Shortcut |
+| --- | --- |
+| Quit | `Ctrl+Q` or `Ctrl+Shift+Q` when `Ctrl+Q` is the WezTerm leader key |
+| New tab | `Ctrl+T` |
+| Command palette | `Ctrl+K` or `Alt+K` |
+| Find in page | `Ctrl+Shift+F` |
+| Next / previous match | `Enter` / `Shift+Enter` |
+| Back / forward | `Ctrl+[` / `Ctrl+]` |
+| DevTools | `Ctrl+Shift+I` or `F12` |
+| DevTools console | `Ctrl+Alt+J` |
+| Start / stop recording | `Ctrl+Shift+R` |
+| Complete recording review | `Ctrl+Enter` |
+| Select an element to send to an agent | `Ctrl+G` |
+| Close popup or overlay | `Escape` |
 
-| Action | macOS | Linux |
-| --- | --- | --- |
-| Quit | ctrl+q or ctrl+c | ctrl+q |
-| New tab | cmd+t | ctrl+t |
-| Edit URL | cmd+l | ctrl+l |
-| Command palette | cmd+p | ctrl+k or alt+k |
-| Find in page | cmd+shift+f | ctrl+shift+f |
-| Next / previous match | enter / shift+enter | enter / shift+enter |
-| Reload | cmd+r | ctrl+r |
-| Back / forward | cmd+[ / cmd+] or ctrl+[ / ctrl+] | ctrl+[ / ctrl+] |
-| Zoom in / out / reset | your terminal's zoom keybind | your terminal's zoom keybind |
-| Devtools | cmd+shift+i or f12 | ctrl+shift+i or f12 |
-| Devtools console | cmd+alt+j | ctrl+alt+j |
-| Copy / paste / cut | cmd+c / cmd+v / cmd+x | ctrl+c / ctrl+v / ctrl+x |
-| Record page (start/stop) | ctrl+r | ctrl+shift+r |
-| Complete recording review | ctrl+enter | ctrl+enter |
-| Start element selection (send to agent) | ctrl+g | ctrl+g |
-| Close popup / overlay | escape | escape |
+## How it works
 
+Terminals including Ghostty, kitty, cmux, VS Code, and WezTerm can display pixels using the
+kitty graphics protocol. terminal-browser uses this capability to show frames generated by
+Chromium.
 
+Electron's offscreen rendering API reads Chromium's pixels directly from the GPU. The browser
+then converts terminal mouse, pointer, and keyboard input into synthetic Chromium events. On
+Windows, the Rust engine obtains this input through Win32 Console and ConPTY handling.
 
-### How does it work?
-Terminals that support the kitty graphics protocol, including ghostty, kitty, cmux, vscode and many more, allow a program running in a terminal to display pixels in your terminal. We use this capability to display pixels generated by chromium.
+The outer browser UI runs on a Rust graphics engine. React and a custom renderer define the UI
+in TypeScript. Browser content and browser chrome share the same canvas, allowing UI elements to
+be layered over the page.
 
-We use [electrons offscreen rendering API](https://www.electronjs.org/docs/latest/tutorial/offscreen-rendering) to read pixels generated by chromium directly from the GPU. This allows terminal-browser to render smoothly without dropping any frames.
+## SSH
 
-After the browser engine starts and is displaying pixels in the terminal, it needs to be able to read user input for websites to actually work. terminal-browser listens to mouse clicks, mouse position, and keyboard events from the terminal, and then sends synthetic events to chromium based on that data. For any user input events that are not retrievable from the terminal, we read directly from the operating system using a background swift app to listen for input events (non intrusively). This is what allows terminal-browser to implement smooth scrolling, and listen to trackpad events (websites with infinite canvases work great inside terminal-browser!)
+```text
+terminal-browser open --ssh <user@host> <url>
+```
 
-The outer UI of the browser is implemented using a graphics engine built on top of rust. The actual UI is defined inside react with a custom react renderer, which allows us to build the UI for the browser using typescript. The UI of the outer browser and the browser content itself is all drawn to the same shared canvas inside the rust engine, which allows us to layer UI on top of the browser.
+Chromium and rendering remain on the local computer while browser network requests are routed
+through the remote SSH server. Services bound to the remote server's `localhost` are therefore
+available to the local browser.
 
-### SSH
-`terminal-browser open --ssh <user@host> <url>` keeps Chromium and rendering on the local
-computer while routing browser network requests through the remote SSH server. This also makes
-services bound to the remote server's `localhost` available to the local browser.
-
-Running terminal-browser directly inside an SSH session also works, but every rendered frame and
-all user input must cross the network, and the terminal cannot use the kitty graphics protocol's
+Running terminal-browser directly inside an SSH session also works, but every frame and all
+input must cross the network. The terminal also cannot use the kitty graphics protocol's
 [local-client optimizations](https://sw.kovidgoyal.net/kitty/graphics-protocol/#local-client).
 
-On Windows, the OpenSSH Client and `tar.exe` must be available on `PATH`. SSH config host aliases
-work normally. `--ssh-bundle` targets a Unix remote server and may open more than one SSH
-connection on Windows, so key authentication or `ssh-agent` is recommended.
+On Windows, OpenSSH Client and `tar.exe` must be available on `PATH`. SSH host aliases work.
+`--ssh-bundle` targets a Unix remote and may open multiple SSH connections on Windows, so key
+authentication or `ssh-agent` is recommended.
 
+## App mode
 
-### App Mode
-terminal-browser can be used to build apps in the terminal using browser technology. You can reference `terminal-code` as a production usage example - https://github.com/zenbu-labs/terminal-code
+terminal-browser can build terminal applications using browser technology. See
+[terminal-code](https://github.com/zenbu-labs/terminal-code) for a production example.
 
-This is accessible by using the `--app-mode` option when spawning terminal-browser, and optionally using the `preload` and `main-script` options that use electron's [preload scripts](https://www.electronjs.org/docs/latest/tutorial/tutorial-preload) and main script under the hood. 
+Use `--app-mode` when opening terminal-browser. The optional `--preload` and `--main-script`
+arguments use Electron's [preload scripts](https://www.electronjs.org/docs/latest/tutorial/tutorial-preload)
+and main process.
 
-The following options are the full set of app related options available for `terminal-browser open`
-```
+The complete app-related options for `terminal-browser open` are:
+
+```text
   --preload=<path>      Run a script inside the context of a web page before it loads (uses electron's preload feature under the hood, runs in an isolated world).
                         terminal-browser specific api's are exposed on globalThis.terminalBrowser
                         {
@@ -250,29 +277,27 @@ The following options are the full set of app related options available for `ter
   --ssh-bundle-dir <dir>
                         Remote installation base for --ssh-bundle. Defaults to
                         ${XDG_DATA_HOME:-~/.local/share}/terminal-browser/bundles
-
 ```
 
-### Roadmap
-- linux support ✅
-- chrome extensions
-- design mode
+## Contributing
 
-### Contributing
+- PR descriptions must be authored and explained by humans.
+- Define the motivation for each change clearly.
+- Keep PRs small enough to review effectively.
 
-- PR **descriptions** must be authored by humans and explained well, otherwise we will close them
-- When making a PR, the motivation must be clearly defined in the description
-- Minimize the size of your PR for the best chance to get it landed
+For local development setup, the recommended approach is to ask a coding agent.
 
-To get a local development setup of terminal-browser, the recommended way is to ask a coding agent.
+### Adding enhanced support for a terminal
 
-### Adding enhanced support for a new terminal
-`terminal-browser`'s cli includes sub commands that rely on terminal/multiplexer scripting features. 
-To implement support for a terminal/multiplexer not yet supported, reference existing implementations
-located here https://github.com/zenbu-labs/terminal-browser/tree/main/terminals/src/terminals
+Some terminal-browser CLI subcommands rely on terminal or multiplexer scripting features. To
+add support for another terminal, refer to the
+[existing implementations](https://github.com/zenbu-labs/terminal-browser/tree/main/terminals/src/terminals).
 
-### [Discord](https://discord.gg/t3jzHHfc6z)
+## Community
 
-### Acknowledgments
-- the [kitty](https://github.com/kovidgoyal/kitty) project for developing the kitty graphics protocol
-- [awrit](https://github.com/chase/awrit) - the first attempt to embed chromium inside a terminal
+[Discord](https://discord.gg/t3jzHHfc6z)
+
+## Acknowledgments
+
+- [kitty](https://github.com/kovidgoyal/kitty) for the kitty graphics protocol
+- [awrit](https://github.com/chase/awrit), the first attempt to embed Chromium in a terminal
