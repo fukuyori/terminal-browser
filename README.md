@@ -97,7 +97,7 @@ corepack pnpm install --frozen-lockfile
 ```
 
 The build writes `dist-release\terminal-browser`. Add `-Zip` to also pack that directory into
-`dist-release\terminal-browser-win32-x64.zip` for people who want a portable copy — it
+`dist-release\terminal-browser-<version>-windows-x64.zip` for people who want a portable copy — it
 compresses about 190 MB and nothing in the build needs it, so it is off by default. The pinned
 `agent-browser` dependency is built and included automatically. Use
 `-AgentBrowserPath C:\path\to\agent-browser.exe` only to override that binary.
@@ -115,8 +115,8 @@ certificates:
 
 ```powershell
 $env:CODESIGN_CERT = "<the certificate's subject name>"
-.\scripts\build-windows.ps1 -Sign           # pixel.node and the Electron binaries
-.\scripts\package-windows-inno.ps1 -Sign    # the installer and its uninstaller
+.\scripts\build-windows.ps1 -Sign           # unsigned payload executables
+.\scripts\package-windows-inno.ps1 -Sign    # ensure payload, installer, and uninstaller are signed
 ```
 
 `CODESIGN_CERT` names the certificate to sign with: the subject name on its own, so
@@ -128,14 +128,14 @@ The release workflow builds and tests the Windows payload, ZIP, and installer on
 `windows-latest`. Stable releases require `WINDOWS_CODESIGN_PFX` containing a base64-encoded
 PFX and `WINDOWS_CODESIGN_PASSWORD`; development workflow runs remain unsigned.
 
-The build signs before packaging because the installer embeds those files, and packaging
-hands the script to Inno Setup instead of running it afterwards because Inno builds the
-uninstaller at compile time and nothing can reach that one later. `sign-windows.ps1` signs
-everything in one call, so a token asks for its PIN once per step, and it passes over files
-that already carry a valid signature. Run it alone to sign named files, or pass
-`-NoElectron` to leave the Electron binaries as their publisher shipped them.
+The build signs before creating the ZIP. Packaging checks the payload again and signs any
+remaining unsigned executables before embedding them, then hands the signer to Inno Setup so
+the installer and its generated uninstaller are signed too. `sign-windows.ps1` signs everything
+in one call, so a token asks for its PIN once per step, and it passes over files that already
+carry a valid signature. Run it alone to sign named files, or pass `-NoElectron` to leave the
+Electron binaries as their publisher shipped them.
 
-A ZIP carries no signature. Publish the `sha256` from `manifest-win32-x64.json` beside it.
+A ZIP carries no signature. Publish the `sha256` from `manifest-windows-x64.json` beside it.
 
 ### Versioning
 

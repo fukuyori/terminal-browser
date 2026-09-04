@@ -50,7 +50,11 @@ if (!fs.existsSync(binary) || force) {
     ...(force ? ["--force"] : []),
     "agent-browser",
   ];
-  const result = spawnSync("cargo", args, { stdio: "inherit" });
+  const env = { ...process.env };
+  const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  env[pathKey] = [path.dirname(binary), env[pathKey]].filter(Boolean).join(path.delimiter);
+  env.RUSTFLAGS = [env.RUSTFLAGS, "--cap-lints=allow"].filter(Boolean).join(" ");
+  const result = spawnSync("cargo", args, { stdio: "inherit", env });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

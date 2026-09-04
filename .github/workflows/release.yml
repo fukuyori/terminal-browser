@@ -222,12 +222,12 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-release-win32-x64
+          name: windows-release-windows-x64
           path: |
-            dist-release/terminal-browser-win32-x64.zip
-            dist-release/manifest-win32-x64.json
+            dist-release/terminal-browser-*-windows-x64.zip
+            dist-release/manifest-windows-x64.json
             dist-release/terminal-browser-*-windows-x64.exe
-            dist-release/manifest-installer-win32-x64.json
+            dist-release/manifest-installer-windows-x64.json
           if-no-files-found: error
 
   release:

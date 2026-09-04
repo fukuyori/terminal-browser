@@ -6,7 +6,8 @@ param(
     [string]$CertThumbprint = $env:CODESIGN_CERT_THUMBPRINT,
     [string]$TimestampUrl = "http://timestamp.digicert.com",
     [string]$SignTool = "",
-    [switch]$NoElectron
+    [switch]$NoElectron,
+    [switch]$NoInstaller
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,16 +53,19 @@ function ResolveSignTool([string]$Explicit) {
 function DefaultTargets {
     $targets = @()
     $targets += Join-Path $payload "browser\native\pixel.node"
-    $targets += Join-Path $payload "agent-browser\bin\agent-browser.exe"
-    if (-not $NoElectron) {
+    if (Test-Path -LiteralPath $payload) {
         $electron = Join-Path $payload "electron"
-        if (Test-Path -LiteralPath $electron) {
-            $targets += (Get-ChildItem -LiteralPath $electron -Include *.exe, *.dll -File -Recurse).FullName
-        }
+        $targets += (Get-ChildItem -LiteralPath $payload -Include *.exe, *.dll -File -Recurse |
+            Where-Object {
+                -not $NoElectron -or
+                -not $_.FullName.StartsWith("$electron\", [StringComparison]::OrdinalIgnoreCase)
+            }).FullName
     }
-    $out = Join-Path $root "dist-release"
-    if (Test-Path -LiteralPath $out) {
-        $targets += (Get-ChildItem -LiteralPath $out -Filter "terminal-browser-*-windows-x64.exe" -File).FullName
+    if (-not $NoInstaller) {
+        $out = Join-Path $root "dist-release"
+        if (Test-Path -LiteralPath $out) {
+            $targets += (Get-ChildItem -LiteralPath $out -Filter "terminal-browser-*-windows-x64.exe" -File).FullName
+        }
     }
     return $targets | Where-Object {
         $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) -and

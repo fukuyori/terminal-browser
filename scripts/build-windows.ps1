@@ -20,7 +20,7 @@ if ($PSVersionTable.PSEdition -eq "Desktop") {
 $root = Split-Path -Parent $PSScriptRoot
 $out = Join-Path $root "dist-release"
 $stage = Join-Path $out "terminal-browser"
-$target = "win32-x64"
+$target = "windows-x64"
 
 if (-not [Environment]::Is64BitOperatingSystem) {
     throw "Windows x64 is required"
@@ -142,7 +142,7 @@ if (-not $Zip) {
     return
 }
 
-$archive = Join-Path $out "terminal-browser-$target.zip"
+$archive = Join-Path $out "terminal-browser-$Version-$target.zip"
 Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal
 $item = Get-Item -LiteralPath $archive
 $manifest = [ordered]@{

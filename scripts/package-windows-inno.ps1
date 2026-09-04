@@ -77,10 +77,12 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 $baseName = "terminal-browser-$Version-windows-x64"
 $options = @("/DMyAppVersion=$Version", "/O$output", "/F$baseName")
 if ($Sign) {
+    $signer = Join-Path $PSScriptRoot "sign-windows.ps1"
+    & $signer -NoInstaller
+
     # Inno signs the uninstaller as well, which it assembles on the user's machine,
     # so that one cannot wait for a signing pass afterwards. Inno expands $f to the
     # file to sign, quotes included, and $q to a quote of our own.
-    $signer = Join-Path $PSScriptRoot "sign-windows.ps1"
     $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `$q$signer`$q `$f"
     $options += "/DSignTool=terminalbrowser"
     $options += "/Sterminalbrowser=$command"
@@ -99,12 +101,12 @@ $item = Get-Item -LiteralPath $installer
 $manifest = [ordered]@{
     version = $Version
     channel = "installer"
-    platform = "win32-x64"
+    platform = "windows-x64"
     file = $item.Name
     sha256 = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
     size = $item.Length
     published = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 }
-$manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output "manifest-installer-win32-x64.json") -Encoding utf8
+$manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output "manifest-installer-windows-x64.json") -Encoding utf8
 
 Write-Output $installer
