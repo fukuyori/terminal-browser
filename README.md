@@ -123,33 +123,6 @@ The ZIP is optional, is about 190 MB, and is not required to create the installe
 `dist-release\terminal-browser-<version>-windows-x64.exe`. The installer supports English and
 Japanese, installs per user, can update the user `PATH`, and can create a WezTerm shortcut.
 
-### Sign Windows packages
-
-Local builds are unsigned unless `-Sign` is specified:
-
-```powershell
-$env:CODESIGN_CERT = "<certificate subject name>"
-.\scripts\build-windows.ps1 -Zip -Sign
-.\scripts\package-windows-inno.ps1 -Sign
-```
-
-`CODESIGN_CERT` is a subject-name fragment, such as `Example Ltd` for
-`CN=Example Ltd, O=…`. `CODESIGN_CERT_THUMBPRINT` can identify the certificate by thumbprint
-instead. Signing stops if no matching code-signing certificate is available.
-
-The build signs unsigned payload executables before creating the ZIP. Packaging checks the
-payload again, then passes the signer to Inno Setup so the installer and generated uninstaller
-are signed. Files with valid signatures are skipped. Pass `-NoElectron` directly to
-`sign-windows.ps1` to leave Electron binaries as their publisher shipped them.
-
-A ZIP cannot carry an Authenticode signature. Publish the SHA-256 value from
-`manifest-windows-x64.json` with it.
-
-The release workflow builds and tests the Windows payload, ZIP, and installer on
-`windows-latest`. Stable releases require the `WINDOWS_CODESIGN_PFX` secret containing a
-base64-encoded PFX and the `WINDOWS_CODESIGN_PASSWORD` secret. Development workflow runs remain
-unsigned.
-
 ### Windows versioning
 
 Windows fork versions combine the upstream version and a fork revision. For example,

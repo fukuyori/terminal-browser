@@ -122,32 +122,6 @@ ZIPは任意作成で、サイズは約190 MBです。インストーラー作�
 `dist-release\terminal-browser-<version>-windows-x64.exe`です。インストーラーは英語と日本語、
 ユーザー単位のインストール、ユーザー`PATH`の変更、WezTermショートカットに対応しています。
 
-### Windowsパッケージの署名
-
-ローカルビルドは、`-Sign`を指定しない限り署名されません。
-
-```powershell
-$env:CODESIGN_CERT = "<証明書のサブジェクト名>"
-.\scripts\build-windows.ps1 -Zip -Sign
-.\scripts\package-windows-inno.ps1 -Sign
-```
-
-`CODESIGN_CERT`には、`CN=Example Ltd, O=…`に対する`Example Ltd`のように、サブジェクト名の一部を
-指定します。拇印で指定する場合は`CODESIGN_CERT_THUMBPRINT`を使用できます。該当するコード署名証明書
-がない場合、署名処理は中止されます。
-
-ビルド処理はZIP作成前に未署名の同梱実行ファイルを署名します。インストーラー作成時にも同梱ファイルを
-再確認し、その後Inno Setupへ署名処理を渡すことで、インストーラーと生成されるアンインストーラーを署名
-します。有効な署名があるファイルはスキップします。Electron配布元の署名を維持したい場合は、
-`sign-windows.ps1`へ直接`-NoElectron`を指定します。
-
-ZIP自体にAuthenticode署名は付けられません。`manifest-windows-x64.json`のSHA-256値をZIPと一緒に
-公開してください。
-
-リリースワークフローは`windows-latest`上でWindowsペイロード、ZIP、インストーラーをビルドしてテスト
-します。安定版の署名には、base64形式のPFXを格納した`WINDOWS_CODESIGN_PFX`シークレットと
-`WINDOWS_CODESIGN_PASSWORD`シークレットが必要です。開発用ワークフローは署名しません。
-
 ### Windows版のバージョン
 
 Windowsフォークのバージョンは、上流バージョンとフォークの改訂番号を組み合わせます。たとえば
