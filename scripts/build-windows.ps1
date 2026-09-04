@@ -42,6 +42,7 @@ $directories = @(
     "browser\native",
     "electron",
     "runtime",
+    "agent-browser\bin",
     "skills",
     "assets\fonts",
     "assets\react-grab"
@@ -111,13 +112,14 @@ Copy-Item -LiteralPath $nodeExecutable -Destination (Join-Path $stage "runtime\n
 
 if ($AgentBrowserPath) {
     $agent = [IO.Path]::GetFullPath($AgentBrowserPath)
-    if (-not (Test-Path -LiteralPath $agent -PathType Leaf)) {
-        throw "missing agent-browser executable: $agent"
-    }
-    $agentDir = Join-Path $stage "agent-browser\bin"
-    New-Item -ItemType Directory -Path $agentDir -Force | Out-Null
-    Copy-Item -LiteralPath $agent -Destination (Join-Path $agentDir "agent-browser.exe")
+} else {
+    $agent = node (Join-Path $root "scripts\agent-browser.mjs") --path
+    if ($LASTEXITCODE -ne 0) { throw "agent-browser build failed" }
 }
+if (-not (Test-Path -LiteralPath $agent -PathType Leaf)) {
+    throw "missing agent-browser executable: $agent"
+}
+Copy-Item -LiteralPath $agent -Destination (Join-Path $stage "agent-browser\bin\agent-browser.exe")
 
 $launcher = @'
 @echo off

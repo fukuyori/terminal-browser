@@ -3,6 +3,7 @@ param(
     [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
     [string[]]$Path,
     [string]$CertSubject = $env:CODESIGN_CERT,
+    [string]$CertThumbprint = $env:CODESIGN_CERT_THUMBPRINT,
     [string]$TimestampUrl = "http://timestamp.digicert.com",
     [string]$SignTool = "",
     [switch]$NoElectron
@@ -51,6 +52,7 @@ function ResolveSignTool([string]$Explicit) {
 function DefaultTargets {
     $targets = @()
     $targets += Join-Path $payload "browser\native\pixel.node"
+    $targets += Join-Path $payload "agent-browser\bin\agent-browser.exe"
     if (-not $NoElectron) {
         $electron = Join-Path $payload "electron"
         if (Test-Path -LiteralPath $electron) {
@@ -67,14 +69,20 @@ function DefaultTargets {
     }
 }
 
-if (-not $CertSubject) {
-    throw "no signing certificate: set CODESIGN_CERT to the certificate's subject name, or pass -CertSubject"
+if ($CertThumbprint) {
+    $certificates = @(Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
+        Where-Object { $_.Thumbprint -eq $CertThumbprint })
+} elseif ($CertSubject) {
+    $certificates = @(Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
+        Where-Object { $_.Subject -like "*$CertSubject*" })
+} else {
+    throw "no signing certificate: set CODESIGN_CERT_THUMBPRINT or CODESIGN_CERT"
 }
-$certificates = @(Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
-    Where-Object { $_.Subject -like "*$CertSubject*" })
 if ($certificates.Count -eq 0) {
-    throw "no code signing certificate matches '$CertSubject'; if it lives on a token, plug it in"
+    $wanted = if ($CertThumbprint) { $CertThumbprint } else { $CertSubject }
+    throw "no code signing certificate matches '$wanted'; if it lives on a token, plug it in"
 }
+$certificate = $certificates | Sort-Object NotAfter -Descending | Select-Object -First 1
 
 $targets = @(if ($Path) { $Path } else { DefaultTargets })
 if ($targets.Count -eq 0) {
@@ -87,7 +95,7 @@ foreach ($target in $targets) {
 
 # One call so a token asks for its PIN once.
 $signtool = ResolveSignTool $SignTool
-& $signtool sign /fd SHA256 /n $CertSubject /tr $TimestampUrl /td SHA256 @targets
+& $signtool sign /fd SHA256 /sha1 $certificate.Thumbprint /tr $TimestampUrl /td SHA256 @targets
 if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
 
 foreach ($target in $targets) {

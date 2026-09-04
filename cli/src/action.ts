@@ -33,7 +33,7 @@ export interface ActionOptions {
 }
 
 function repoScript(): string {
-  return path.resolve(__dirname, "..", "..", "scripts", "agent-browser.sh");
+  return path.resolve(__dirname, "..", "..", "scripts", "agent-browser.mjs");
 }
 
 export function agentBrowserPath(): string {
@@ -56,7 +56,10 @@ export function agentBrowserPath(): string {
   }
   const script = repoScript();
   if (!fs.existsSync(script)) throw new Error(`missing ${script}`);
-  return execFileSync(script, ["--path"], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
+  return execFileSync(process.execPath, [script, "--path"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "inherit"],
+  }).trim();
 }
 
 function sessionName(browser: Browser): string {

@@ -113,9 +113,114 @@ jobs:
             dist-release/manifest-${{ matrix.target }}.json
           if-no-files-found: error
 
+  windows:
+    runs-on: windows-latest
+    needs: prepare
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/../cargo-target
+      TERMINAL_BROWSER_AGENT_CACHE: ${{ github.workspace }}/../terminal-browser-agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: corepack pnpm install --frozen-lockfile
+
+      - name: Resolve agent-browser version
+        id: agent
+        shell: pwsh
+        run: |
+          $ref = node scripts/agent-browser.mjs --ref
+          "ref=$ref" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.TERMINAL_BROWSER_AGENT_CACHE }}
+          key: agent-browser-${{ runner.os }}-${{ steps.agent.outputs.ref }}
+
+      - name: Test
+        shell: pwsh
+        run: |
+          corepack pnpm -r typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          corepack pnpm -r test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path engine/Cargo.toml --workspace
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Prepare signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PFX: ${{ secrets.WINDOWS_CODESIGN_PFX }}
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+        run: |
+          $stable = "${{ needs.prepare.outputs.channel }}" -eq "stable"
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PFX)) {
+            if ($stable) { throw "stable Windows releases require WINDOWS_CODESIGN_PFX" }
+            "WINDOWS_SIGN=false" >> $env:GITHUB_ENV
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "terminal-browser-signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX))
+            $password = if ([string]::IsNullOrEmpty($env:WINDOWS_CODESIGN_PASSWORD)) {
+              New-Object Security.SecureString
+            } else {
+              ConvertTo-SecureString $env:WINDOWS_CODESIGN_PASSWORD -AsPlainText -Force
+            }
+            $certificate = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password |
+              Where-Object { $_.HasPrivateKey } | Select-Object -First 1
+          } finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
+          if (-not $certificate) { throw "the signing PFX contains no certificate with a private key" }
+          "CODESIGN_CERT_THUMBPRINT=$($certificate.Thumbprint)" >> $env:GITHUB_ENV
+          "WINDOWS_SIGN=true" >> $env:GITHUB_ENV
+
+      - name: Build Windows payload and ZIP
+        shell: pwsh
+        run: |
+          $options = @{
+            Version = "${{ needs.prepare.outputs.version }}"
+            Channel = "${{ needs.prepare.outputs.channel }}"
+            Zip = $true
+          }
+          if ($env:WINDOWS_SIGN -eq "true") { $options.Sign = $true }
+          & .\scripts\build-windows.ps1 @options
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $options = @{}
+          if ($env:WINDOWS_SIGN -eq "true") { $options.Sign = $true }
+          & .\scripts\package-windows-inno.ps1 @options
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-win32-x64
+          path: |
+            dist-release/terminal-browser-win32-x64.zip
+            dist-release/manifest-win32-x64.json
+            dist-release/terminal-browser-*-windows-x64.exe
+            dist-release/manifest-installer-win32-x64.json
+          if-no-files-found: error
+
   release:
     runs-on: ubuntu-latest
-    needs: [prepare, build, worker]
+    needs: [prepare, build, windows, worker]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -142,6 +247,12 @@ jobs:
           scripts/publish-r2.sh | tee /tmp/publish.log
           grep -E '^(pinned|latest)=' /tmp/publish.log >> "$GITHUB_OUTPUT" || true
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: windows-release-*
+          merge-multiple: true
+          path: dist-release
+
       - name: GitHub release
         if: needs.prepare.outputs.channel == 'stable'
         env:
@@ -151,10 +262,14 @@ jobs:
           if ! gh release view "$VERSION" >/dev/null 2>&1; then
             gh release create "$VERSION" \
               --title "$VERSION" \
-              --notes "$(printf 'Install:\n\n```sh\ncurl -fsSL %s | bash\n```\n\nPinned to this version:\n\n```sh\ncurl -fsSL %s | bash\n```\n' \
+              --notes "$(printf 'Install on macOS and Linux:\n\n```sh\ncurl -fsSL %s | bash\n```\n\nPinned to this version:\n\n```sh\ncurl -fsSL %s | bash\n```\n\nThe signed Windows installer and portable ZIP are attached below.\n' \
                 "${{ steps.publish.outputs.latest }}" "${{ steps.publish.outputs.pinned }}")"
           fi
-          gh release upload "$VERSION" dist-release/terminal-browser-*.tar.gz --clobber
+          gh release upload "$VERSION" \
+            dist-release/terminal-browser-*.tar.gz \
+            dist-release/terminal-browser-*.zip \
+            dist-release/terminal-browser-*.exe \
+            --clobber
 
       - name: Summary
         run: |

@@ -24,8 +24,10 @@ $iss = Join-Path $root "installer\terminal-browser.iss"
 $required = @(
     "bin\terminal-browser.cmd",
     "browser\native\pixel.node",
+    "agent-browser\bin\agent-browser.exe",
     "electron\electron.exe",
     "runtime\node.exe",
+    "skills\manifest",
     "VERSION"
 )
 foreach ($relativePath in $required) {

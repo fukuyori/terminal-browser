@@ -32,7 +32,7 @@ if [ "$TARGET" = darwin-arm64 ]; then
   codesign --force --sign - --timestamp=none "$STAGE/bin/native-scroll-helper" 2>/dev/null || true
 fi
 
-AGENT_BROWSER_BIN="$("$ROOT/scripts/agent-browser.sh" --path)"
+AGENT_BROWSER_BIN="$(node "$ROOT/scripts/agent-browser.mjs" --path)"
 cp "$AGENT_BROWSER_BIN" "$STAGE/agent-browser/bin/agent-browser"
 if [ "$TARGET" = darwin-arm64 ]; then
   codesign --force --sign - --timestamp=none "$STAGE/agent-browser/bin/agent-browser" 2>/dev/null || true

@@ -20,7 +20,7 @@ Press `Ctrl+Q` to quit. If `Ctrl+Q` is assigned to WezTerm as a leader key, use
 Windows-specific changes in this fork include:
 
 - A Windows x64 installer, and an optional portable ZIP, carrying Electron, Node.js,
-  `pixel.node`, and a `.cmd` launcher
+  `pixel.node`, `agent-browser`, and a `.cmd` launcher
 - Win32 Console and ConPTY input, resize, mouse-coordinate, wake-up, and terminal-restore handling
 - Windows named pipes for daemon/session IPC and native Windows path/executable handling
 - Windows clipboard-image and `file://` path support
@@ -98,9 +98,9 @@ corepack pnpm install --frozen-lockfile
 
 The build writes `dist-release\terminal-browser`. Add `-Zip` to also pack that directory into
 `dist-release\terminal-browser-win32-x64.zip` for people who want a portable copy — it
-compresses about 190 MB and nothing in the build needs it, so it is off by default. Add
-`-AgentBrowserPath C:\path\to\agent-browser.exe` to include the optional `action` command
-dependency.
+compresses about 190 MB and nothing in the build needs it, so it is off by default. The pinned
+`agent-browser` dependency is built and included automatically. Use
+`-AgentBrowserPath C:\path\to\agent-browser.exe` only to override that binary.
 
 The packaging step compiles `installer\terminal-browser.iss` into
 `dist-release\terminal-browser-<version>-windows-x64.exe` and needs Inno Setup 6. That
@@ -123,6 +123,10 @@ $env:CODESIGN_CERT = "<the certificate's subject name>"
 `Example Ltd` for `CN=Example Ltd, O=…`. Signing stops rather than carrying on when the
 variable is unset or nothing matches it, which is also what a certificate on a token that
 nobody plugged in looks like.
+
+The release workflow builds and tests the Windows payload, ZIP, and installer on
+`windows-latest`. Stable releases require `WINDOWS_CODESIGN_PFX` containing a base64-encoded
+PFX and `WINDOWS_CODESIGN_PASSWORD`; development workflow runs remain unsigned.
 
 The build signs before packaging because the installer embeds those files, and packaging
 hands the script to Inno Setup instead of running it afterwards because Inno builds the
