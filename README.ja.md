@@ -187,6 +187,62 @@ terminal-browser action
 - HTMLで作成した計画をエージェントの隣に自動表示する
 - SSH経由でリモートマシン上のサービスをプレビューする
 
+## エージェント連携
+
+### エージェントskillの導入
+
+terminal-browserのインストール後にsetupを実行します。
+
+```powershell
+terminal-browser setup
+```
+
+setupは、存在する対応エージェントの設定ディレクトリへ、同梱された`terminal-browser` skillのリンクを
+作成します。生成済みマニフェストはClaude Code、Codex、Cursor、Geminiに対応し、共有skillも
+`.agents\skills`へ導入します。また、対応するターミナルとエディターの設定も適用します。
+
+このskillは、会話の隣にページを開き、既存ブラウザを操作する方法をエージェントへ伝えます。右側の
+分割ペインへ開く例は次のとおりです。
+
+```powershell
+terminal-browser open https://example.com --split right
+```
+
+### 開いているブラウザの操作
+
+エージェントはagent-browser互換の`action`コマンドを使用できます。対象を指定しなければ、現在の
+ターミナルタブにあるブラウザと、そのブラウザで選択中のタブを操作します。
+
+```powershell
+terminal-browser ls
+terminal-browser action -- snapshot
+terminal-browser action -- click @e14
+terminal-browser action -- fill @e3 "hello"
+terminal-browser action -- eval "document.title"
+terminal-browser action done
+```
+
+`terminal-browser ls`はブラウザキーとタブIDを表示します。複数のブラウザまたはタブがある場合は、その値で
+操作対象を指定します。
+
+```powershell
+terminal-browser action --browser 90107-1 --tab 2 --follow -- fill @e3 "hello"
+```
+
+- `--browser <key>`：実行中のブラウザを選択します。
+- `--tab <id>`：ブラウザ内のタブを選択します。
+- `--target <id>`：CDPターゲットを直接選択します。
+- `--follow`：コマンド実行前に選択したタブを前面へ表示します。
+- `terminal-browser action done`：エージェント操作中のインジケーターをすぐに消します。`done`を実行
+  しなくても、エージェント操作が一定時間なければ自動的に消えます。
+
+### ページ要素をエージェントへ送る
+
+`Ctrl+G`を押すか、ページメニューの**send to agent**を選択してから、ページ上の要素を選びます。
+選択内容はクリップボードへコピーされ、同じターミナルタブ内で検出されたコーディングエージェントの
+ペインへ送信されます。エージェントのペインを検出できない場合はクリップボードに残るため、手動で貼り
+付けられます。
+
 ## Windowsショートカット
 
 | 操作 | ショートカット |

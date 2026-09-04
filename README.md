@@ -189,6 +189,62 @@ terminal-browser action
 - Open HTML plans beside an agent automatically.
 - Preview services running on a remote machine over SSH.
 
+## Agent integration
+
+### Install the agent skill
+
+Run setup after installing terminal-browser:
+
+```powershell
+terminal-browser setup
+```
+
+Setup links the packaged `terminal-browser` skill into supported agent directories that already
+exist. The generated manifest supports Claude Code, Codex, Cursor, and Gemini, and also installs
+the shared skill under `.agents\skills`. Setup also applies supported terminal and editor settings.
+
+The skill tells an agent how to open a page beside the conversation and operate an existing
+browser. A typical split-pane launch is:
+
+```powershell
+terminal-browser open https://example.com --split right
+```
+
+### Control an open browser
+
+Agents can use the agent-browser-compatible `action` command. With no selector, it targets the
+browser in the current terminal tab and that browser's active tab.
+
+```powershell
+terminal-browser ls
+terminal-browser action -- snapshot
+terminal-browser action -- click @e14
+terminal-browser action -- fill @e3 "hello"
+terminal-browser action -- eval "document.title"
+terminal-browser action done
+```
+
+`terminal-browser ls` prints browser keys and tab IDs. Use them when more than one browser or tab
+is open:
+
+```powershell
+terminal-browser action --browser 90107-1 --tab 2 --follow -- fill @e3 "hello"
+```
+
+- `--browser <key>` selects a running browser.
+- `--tab <id>` selects one of its tabs.
+- `--target <id>` selects a CDP target directly.
+- `--follow` brings the selected tab to the front before running the command.
+- `terminal-browser action done` immediately clears the agent-control indicator. The indicator
+  otherwise disappears automatically after a period without agent actions.
+
+### Send a page element to an agent
+
+Press `Ctrl+G`, or choose **send to agent** from the page menu, then select an element. The
+selected content is copied to the clipboard and sent to a detected coding-agent pane in the same
+terminal tab. If no agent pane can be found, the content remains on the clipboard for manual
+pasting.
+
 ## Windows shortcuts
 
 | Action | Shortcut |
