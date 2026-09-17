@@ -42,9 +42,9 @@ claude plugin install terminal-browser@terminal-browser
 
 Now you can run "/browser" inside claude code to open the browser
 
-## Updating
+### Updating
 
-Update the claude code plugin:
+Update the claude code plugin
 ```
 claude plugin update terminal-browser@terminal-browser
 ```
@@ -56,7 +56,7 @@ terminal-browser upgrade
 
 ### Configuration
 
-You can configure the terminal-browser plugin to include a tool that claude can use to open the browser itself. This is by default off, since claude can already use the `terminal-browser` CLI to open the browser inside the terminal. You can enable the tool by adding the following to your ` ~/.claude/settings.json`:
+You can configure the terminal-browser plugin to include a tool that claude can use to open the browser. This is by default off, since claude can already use the `terminal-browser` CLI to open the browser inside the terminal through a split pane. You can enable the tool by adding the following to your ` ~/.claude/settings.json`:
 
 ```json
 {
@@ -74,8 +74,8 @@ You can configure the terminal-browser plugin to include a tool that claude can 
 ## terminal-browser plugin API
 
 The terminal-browser plugin comes with an API you can use within another claude code plugin to programatically open the browser and load a URL. Some examples of useful plugins you can build with this are:
-- a `/tldraw` slash command that opens tldraw in the claude code split pane
-- a `/open-pr` slash command that opens the PR associated with the branch you are working on
+- `/tldraw` slash command that opens tldraw in the claude code split pane
+- `/open-pr` slash command that opens the PR associated with the branch you are working on
 
 ```typescript
 export type BrowserOpenInput = { url?: string }

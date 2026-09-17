@@ -151,8 +151,6 @@ async function browserClosed($: EngineInterface): Promise<void> {
   state.open = false
   state.pendingUrl = null
   state.region = null
-  // hides the pane but keeps the browser (and its tabs) alive for an instant
-  // resume; the poll keeps state.last (alive, url, placed) current
   await post($, '/browser/close', {})
   if (state.port !== null) startPolling($)
 }
