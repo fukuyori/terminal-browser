@@ -124,8 +124,8 @@ Even if your terminal supports the required graphics feature, if you are running
 
 ## Caveats:
 - depends on your terminal supporting the [kitty graphics protocol]
-- cannot render above 50fps while running inside claude code without risk of the terminal UI getting "messed up"
-  - if you still see the screen getting [messed up](https://github.com/zenbu-labs/pixel/pull/8), select the text around that area with your mouse to make the terminal correctly redraw the area, or try resizing the pane till it looks right
+- cannot render above 50fps while running inside claude code without risk of the terminal UI getting ["messed up"](https://github.com/zenbu-labs/pixel/pull/8)
+  - if you still see the screen getting messed up, select the text around that area with your mouse to make the terminal correctly redraw the area, or try resizing the pane till it looks right
 - the mouse position will sometimes be slightly off, since claude code does not enable pixel coordinate mouse reporting
 - the plugin needs to make fetch requests to a local http server to communicate with the terminal-browser CLI, which may cause a prompt to show in your OS that your terminal wants to access the local network
 - claude code sets a very high min width for the chat area, so its sometimes not possible to resize the browser to the size you want
