@@ -14,7 +14,7 @@ export type BridgeState = {
 
 export type LaunchReport =
   | { port: number; token: string }
-  | { error: string; code: 'version' | 'tty' | 'start'; found?: string; required?: string }
+  | { error: string; code: 'tty' | 'start' }
 
 export type SizeMessage = { type: 'size'; cols: number; rows: number }
 export type InputMessage = { type: 'input'; events: unknown[] }

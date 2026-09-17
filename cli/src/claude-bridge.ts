@@ -17,7 +17,6 @@ import { installedVersion } from "./upgrade";
 const execFile = promisify(execFileCb);
 
 
-const REQUIRED_VERSION = "0.9.0";
 const LOG_DIR = path.join(os.homedir(), ".terminal-browser", "logs");
 const LOG_FILE = path.join(LOG_DIR, "claude-code-plugin-bridge.log");
 const DEFAULT_CELL: [number, number] = [16, 34];
@@ -38,33 +37,6 @@ function selfCommand(): string[] {
 }
 
 
-function parseVersion(text: string | undefined): [number, number, number] | null {
-  const m = /(\d+)\.(\d+)\.(\d+)/.exec(text ?? "");
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
-}
-
-function atLeast(found: number[], required: number[]): boolean {
-  for (let i = 0; i < 3; i++) {
-    if (found[i] !== required[i]) return found[i] > required[i];
-  }
-  return true;
-}
-
-type Check = { ok: true; found: string } | { ok: false; code: string; error: string; found?: string; required?: string };
-
-function checkVersion(): Check {
-  const installed = installedVersion();
-  if (!installed) return { ok: true, found: "dev" };
-  const found = parseVersion(installed);
-  if (!found) return { ok: false, code: "version", error: `could not read the terminal-browser version from "${installed}"`, required: REQUIRED_VERSION };
-  const foundText = found.join(".");
-  if (!atLeast(found, parseVersion(REQUIRED_VERSION)!)) {
-    return { ok: false, code: "version", error: `terminal-browser ${foundText} is installed; ${REQUIRED_VERSION} or newer is needed`, found: foundText, required: REQUIRED_VERSION };
-  }
-  return { ok: true, found: foundText };
-}
-
-
 function parseCell(text: string | undefined): [number, number] | null {
   const m = /^(\d+)x(\d+)$/.exec(text ?? "");
   return m ? [Number(m[1]), Number(m[2])] : null;
@@ -79,9 +51,6 @@ function report(value: unknown, exitCode = 0): never {
 }
 
 async function launch(argv: string[]): Promise<never> {
-  const check = checkVersion();
-  if (!check.ok) report(check, 2);
-
   const tty = flag(argv, "--tty") ?? callerTty().path;
   if (!tty) report({ error: "no tty: Claude Code is not running on a terminal", code: "tty" }, 2);
   const transport = flag(argv, "--transport") ?? "file"
@@ -118,7 +87,7 @@ async function launch(argv: string[]): Promise<never> {
   const { port } = JSON.parse(line.split("\n")[0]) as { port: number };
   child.stdout!.destroy();
   child.unref();
-  const launched = { port, pid: child.pid, tty, transport, terminalBrowser: check.found, token };
+  const launched = { port, pid: child.pid, tty, transport, terminalBrowser: installedVersion() ?? "dev", token };
   fs.appendFileSync(LOG_FILE, `${new Date().toISOString()} launch ${JSON.stringify({ ...launched, token: undefined })}\n`);
   report(launched);
 }

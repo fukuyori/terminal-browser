@@ -19,6 +19,7 @@ const OPEN_TOOL = 'mcp__terminal-browser__open'
 const CLOSE_TOOL = 'mcp__terminal-browser__close'
 const START_URL = 'terminal-browser://start'
 const SETUP_URL = 'https://github.com/zenbu-labs/terminal-browser/tree/main/claude-code-plugin#setup'
+const REQUIRED_CAPABILITIES = ['embedding']
 const POLL_MS = 250
 const IDLE_POLL_MS = 600
 
@@ -46,8 +47,24 @@ async function terminalBrowserCommand($: EngineInterface): Promise<string[]> {
   return ['terminal-browser']
 }
 
+async function cliCapabilities($: EngineInterface, command: string[]): Promise<string[] | null> {
+  try {
+    const { stdout, exitCode } = await $.process.run([...command, 'capabilities'], { timeoutMs: 10_000 })
+    if (exitCode !== 0) return null
+    const line = stdout.split('\n').find((text: string) => text.startsWith('{'))
+    const parsed = line ? JSON.parse(line) : null
+    return parsed && Array.isArray(parsed.capabilities) ? parsed.capabilities : null
+  } catch {
+    return null
+  }
+}
+
 async function startBridge($: EngineInterface): Promise<{ ok: true } | { ok: false; error: string }> {
   const command = await terminalBrowserCommand($)
+  const capabilities = await cliCapabilities($, command)
+  if (!capabilities || REQUIRED_CAPABILITIES.some(need => !capabilities.includes(need))) {
+    return { ok: false, error: `[placeholder copy: this terminal-browser can't open a browser pane — update it · setup: ${SETUP_URL}]` }
+  }
   let report: unknown = null
   try {
     const { stdout, stderr, exitCode } = await $.process.run([...command, 'claude-bridge', 'launch'], { timeoutMs: 20_000 })
@@ -56,18 +73,14 @@ async function startBridge($: EngineInterface): Promise<{ ok: true } | { ok: fal
   } catch (err) {
     report = { error: String(err), code: 'start' }
   }
-  if (!isLaunchReport(report)) return { ok: false, error: 'terminal-browser could not start' }
-  if ('port' in report) {
-    state.port = report.port
-    state.token = report.token
-    startPolling($)
-    return { ok: true }
+  if (!isLaunchReport(report) || !('port' in report)) {
+    const detail = isLaunchReport(report) && 'error' in report ? report.error : 'terminal-browser could not start'
+    return { ok: false, error: `[placeholder copy: ${detail}]` }
   }
-  const error =
-    report.code === 'version'
-      ? `${report.error} · setup: ${SETUP_URL}]`
-      : `terminal-browser could not start: ${report.error}]`
-  return { ok: false, error }
+  state.port = report.port
+  state.token = report.token
+  startPolling($)
+  return { ok: true }
 }
 
 async function post($: EngineInterface, path: string, body: unknown): Promise<unknown> {

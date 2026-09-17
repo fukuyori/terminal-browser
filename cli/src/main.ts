@@ -41,6 +41,7 @@ import { installedVersion, upgradeCommand } from "./upgrade";
 import { claudeBridgeCommand } from "./claude-bridge";
 
 const DIST_ROOT = process.env.TERMINAL_BROWSER_DIST_ROOT ?? null;
+const CAPABILITIES = ["embedding"] as const;
 delete process.env.ELECTRON_RUN_AS_NODE;
 
 function fail(message: string): never {
@@ -691,6 +692,10 @@ async function main(): Promise<number> {
   }
   if (command === "--version" || command === "-v") {
     process.stdout.write(`terminal-browser ${installedVersion() ?? "dev"}\n`);
+    return 0;
+  }
+  if (command === "capabilities") {
+    process.stdout.write(`${JSON.stringify({ capabilities: CAPABILITIES })}\n`);
     return 0;
   }
   if (command === "help") return helpCommand(args[0]);
