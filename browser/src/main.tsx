@@ -8,6 +8,7 @@ import { runDaemon } from "./daemon";
 import { LOGS_DIR, ensureDataDir } from "pixel-store";
 import { appLog } from "@zenbu-labs/pixel";
 import { claimProfile } from "./profile";
+import { registerScheme } from "./pages/scheme";
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
@@ -23,6 +24,7 @@ app.commandLine.appendSwitch("enable-logging", "file");
 app.commandLine.appendSwitch("log-file", path.join(LOGS_DIR, "chromium.log"));
 app.setName("terminal-browser");
 claimProfile();
+registerScheme();
 
 
 function freePort(): Promise<number> {

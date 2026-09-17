@@ -106,6 +106,7 @@ export interface TabView {
   url: string;
   ref: RefObject<WebViewHandle>;
   active: boolean;
+  hidden: boolean;
   partition: string | null;
   proxy: string | null;
   preload: string | null;

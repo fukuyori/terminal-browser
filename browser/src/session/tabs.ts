@@ -4,6 +4,7 @@ import type { OpenWindowDecision, WebViewHandle, WebViewState } from "@zenbu-lab
 
 import type { TabRow } from "../ui/types";
 import { displayUrl } from "../url";
+import { DOC_SCHEME } from "../pages/scheme";
 
 export interface Tab {
   readonly id: number;
@@ -114,7 +115,13 @@ export class TabManager {
     const tab = this.get(id);
     if (!tab) return "deny";
     const wantsTab = details.disposition === "foreground-tab" || details.disposition === "background-tab";
-    if (!wantsTab) return "popup";
+    if (!wantsTab) {
+      // a page-opened window (window.open with features) is a readable
+      // same-origin child; never allow one onto a local file preview, or the
+      // opener could read another local file's DOM through it
+      if (details.url.startsWith(`${DOC_SCHEME}://`)) return "deny";
+      return "popup";
+    }
     this.create(details.url, details.disposition === "foreground-tab");
     this.host.onTabOpened(tab, details.url);
     return "deny";

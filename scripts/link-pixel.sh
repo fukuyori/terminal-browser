@@ -11,20 +11,23 @@ case "$(uname -s)-$(uname -m)" in
   *) echo "unsupported host: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
 esac
 
+# ./scripts/link-pixel.sh --unlink [version]   (version defaults to PIXEL_VERSION or the latest tag)
 if [ "${1:-}" = "--unlink" ]; then
+  VERSION="${2:-${PIXEL_VERSION:-latest}}"
   node -e '
     const fs = require("fs");
+    const version = process.argv[1];
     for (const file of ["browser/package.json", "cli/package.json"]) {
       const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
-      pkg.dependencies["@zenbu-labs/pixel"] = "0.0.13";
+      pkg.dependencies["@zenbu-labs/pixel"] = version;
       fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
     }
     const root = JSON.parse(fs.readFileSync("package.json", "utf8"));
     if (root.pnpm) { delete root.pnpm.overrides; if (!Object.keys(root.pnpm).length) delete root.pnpm; }
     fs.writeFileSync("package.json", JSON.stringify(root, null, 2) + "\n");
-  '
+  ' "$VERSION"
   cd "$ROOT" && pnpm install
-  echo "back on the npm release of pixel"
+  echo "back on the npm release of pixel ($VERSION)"
   exit 0
 fi
 

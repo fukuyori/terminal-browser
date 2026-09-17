@@ -38,6 +38,7 @@ import { apparmorSetup, deniedRefusal, linuxSandboxError, sandboxRefusal } from 
 import { connectSsh, validateSshTarget } from "@zenbu-labs/pixel/ssh";
 import type { InstanceRecord } from "./registry";
 import { installedVersion, upgradeCommand } from "./upgrade";
+import { claudeBridgeCommand } from "./claude-bridge";
 
 const DIST_ROOT = process.env.TERMINAL_BROWSER_DIST_ROOT ?? null;
 delete process.env.ELECTRON_RUN_AS_NODE;
@@ -717,6 +718,7 @@ async function main(): Promise<number> {
     return editors !== 0 ? editors : sandbox;
   }
   if (command === "upgrade") return upgradeCommand();
+  if (command === "claude-bridge") return claudeBridgeCommand(args);
   if (command === "shutdown") return shutdownDaemon();
   if (command === "register-app") return registerAppCommand(args);
   if (command === "unregister-app") return unregisterAppCommand(args);

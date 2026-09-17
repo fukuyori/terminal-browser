@@ -460,7 +460,7 @@ function BrowserTabContents({
           key={tab.id}
           ref={tab.ref}
           src={tab.url}
-          hidden={!tab.active || coveredByReview}
+          hidden={!tab.active || coveredByReview || tab.hidden}
           autoFocus={tab.active}
           devtools={false}
           partition={tab.partition ?? undefined}

@@ -15,8 +15,9 @@ import { detect } from "@zenbu-labs/pixel/terminal";
 import type { Pane, Terminal } from "@zenbu-labs/pixel/terminal";
 
 import { bundledAsset } from "../assets";
-import { Grab, reactGrabPreloadPath } from "../grab/grab";
+import { CopyOnSelect, Grab, reactGrabPreloadPath } from "../grab/grab";
 import { AgentPaneFinder } from "../grab/target";
+import type { EmbeddedAgent } from "../grab/target";
 import { zoomDirection } from "../zoom";
 import type { ZoomDirection } from "../zoom";
 import { lastUrl, listApps, setLastUrl, settings, store } from "pixel-store";
@@ -40,6 +41,9 @@ import type {
   TabView,
 } from "../ui/types";
 import { displayUrl, normalizeUrl, searchOrUrl } from "../url";
+import { START_URL } from "../pages/scheme";
+import type { PageContext } from "../pages/scheme";
+import { makeTheme } from "../ui/theme";
 import { fuzzyScore } from "./fuzzy";
 import {
   bindingLabel,
@@ -73,6 +77,8 @@ export interface SessionHandle {
   ready: Promise<void>;
   close(code?: number): void;
   nudgeResize(): void;
+  pageContext(): PageContext;
+  showsStartPage(): boolean;
 }
 
 export function createSession(ctx: SessionContext): SessionHandle {
@@ -85,10 +91,11 @@ export function createSession(ctx: SessionContext): SessionHandle {
     ready,
     close: (code = 0) => session.shutdown(code),
     nudgeResize: () => session.nudgeResize(),
+    pageContext: () => session.pageContext(),
+    showsStartPage: () => session.showsStartPage(),
   };
 }
 
-const DEFAULT_URL = "https://github.com/zenbu-labs";
 
 const FONT_FILE = path.join("fonts", "JetBrainsMono-Regular.ttf");
 
@@ -202,13 +209,18 @@ class Session {
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private records = new Map<number, RecordSession>();
   private grabs = new Map<number, Grab>();
+  private copyWatchers = new Map<number, CopyOnSelect>();
+  private readonly copyOnSelect: boolean;
   private readonly grabIcon = bundledAsset(path.join("react-grab", "logo.png"));
   private readonly agentPanes: AgentPaneFinder;
   private shownRecord: RecordSession | null = null;
   private recordStarting = false;
+  private readonly defaultUrl: string;
+  private sessionHidden = false;
 
   constructor(ctx: SessionContext) {
     this.ctx = ctx;
+    this.defaultUrl = ctx.env.TERMINAL_BROWSER_START_PAGE === "1" ? START_URL : "about:blank";
     this.terminal = detect(ctx.env);
     this.marker = `terminal-browser:${ctx.key}`;
     this.argv = ctx.argv;
@@ -217,6 +229,7 @@ class Session {
       parentTty: flagValue(this.argv, "--parent-tty"),
       cwd: ctx.cwd,
       self: () => this.findOwnPane(),
+      embedded: embeddedAgent(ctx.env.TERMINAL_BROWSER_AGENT_BRIDGE, ctx.env.TERMINAL_BROWSER_AGENT_TOKEN),
     });
     this.sessionFlags = {
       clipboardRead: this.argv.includes("--allow-clipboard-read"),
@@ -226,7 +239,8 @@ class Session {
     this.socksPort = Number.isInteger(socksPort) && socksPort > 0 ? socksPort : null;
     this.partition = sshTarget ? `ssh-${sshTarget.replace(/[^A-Za-z0-9@._-]/g, "-")}` : null;
     this.fallbackState = initialState(this.initialUrl());
-    this.browserPreload = reactGrabPreloadPath();
+    this.copyOnSelect = ctx.env.TERMINAL_BROWSER_COPY_ON_SELECT === "1";
+    this.browserPreload = reactGrabPreloadPath(this.copyOnSelect);
     this.tabs = new TabManager(
       {
         onActivated: () => {
@@ -250,9 +264,15 @@ class Session {
             grab.dispose();
             this.grabs.delete(id);
           }
+          for (const [id, watcher] of [...this.copyWatchers]) {
+            if (this.tabs.has(id)) continue;
+            watcher.dispose();
+            this.copyWatchers.delete(id);
+          }
         },
         onActiveState: (state, urlChanged) => {
           if (urlChanged) rememberUrl(state.url);
+          this.ensureCopyWatcher();
           if (Math.abs(state.zoom - this.lastZoom) > 0.001) this.showZoomHud(state.zoom);
           this.lastZoom = state.zoom;
           this.registry?.update();
@@ -260,7 +280,7 @@ class Session {
         },
         requestRender: () => this.render(),
       },
-      DEFAULT_URL,
+      this.defaultUrl,
     );
   }
 
@@ -282,6 +302,11 @@ class Session {
         this.render();
       },
       onColors: () => this.render(),
+      onVisible: (visible) => {
+        if (this.sessionHidden === !visible) return;
+        this.sessionHidden = !visible;
+        this.render();
+      },
       onQuit: () => this.shutdown(),
       onExit: (code) => this.ctx.onClose(code),
     });
@@ -304,7 +329,7 @@ class Session {
       splitDir: splitDirection(flagValue(this.argv, "--split-dir")),
       parentTty: flagValue(this.argv, "--parent-tty"),
       state: () => this.tabs.activeState ?? this.fallbackState,
-      openTab: (url, cwd) => this.tabs.create(url ? normalizeUrl(url, cwd) : DEFAULT_URL).id,
+      openTab: (url, cwd) => this.tabs.create(url ? normalizeUrl(url, cwd) : this.defaultUrl).id,
       activateTab: (id) => {
         if (!this.tabs.has(id) || this.activeRecord()?.reviewing) return false;
         this.tabs.activate(id);
@@ -416,6 +441,7 @@ class Session {
       url: tab.url,
       ref: tab.ref,
       active: tab.id === active?.id,
+      hidden: this.sessionHidden,
       partition: this.partition,
       proxy: this.socksPort ? `socks5://127.0.0.1:${this.socksPort}` : null,
       preload: this.browserPreload,
@@ -995,6 +1021,21 @@ class Session {
     return tab ? this.grabs.get(tab.id) ?? null : null;
   }
 
+  private ensureCopyWatcher(): void {
+    if (!this.copyOnSelect) return;
+    const tab = this.tabs.active;
+    const handle = tab?.ref.current;
+    if (!tab || !handle || this.copyWatchers.has(tab.id)) return;
+    const watcher = new CopyOnSelect(handle, {
+      copied: (text) => {
+        this.root?.setClipboard(text);
+        this.showToast("copied to clipboard", "done");
+      },
+    });
+    this.copyWatchers.set(tab.id, watcher);
+    void watcher.enable();
+  }
+
   private grabFor(tab: Tab, handle: WebViewHandle): Grab {
     let grab = this.grabs.get(tab.id);
     if (!grab) {
@@ -1314,6 +1355,15 @@ class Session {
     return normalizeUrl(searchOrUrl(text, this.ctx.cwd), this.ctx.cwd);
   }
 
+  pageContext(): PageContext {
+    const colors = this.root?.info.colors;
+    return { cwd: this.ctx.cwd, theme: colors ? makeTheme(colors) : null };
+  }
+
+  showsStartPage(): boolean {
+    return (this.tabs.activeState?.url ?? "").startsWith(START_URL);
+  }
+
   private initialUrl(): string {
     const arg = this.argv.find((argument) => !argument.startsWith("-"));
     if (arg) return normalizeUrl(arg, this.ctx.cwd);
@@ -1321,7 +1371,7 @@ class Session {
       const last = lastUrl()?.trim();
       if (last && /^https?:\/\//.test(last)) return last;
     } catch { }
-    return DEFAULT_URL;
+    return this.defaultUrl;
   }
 }
 
@@ -1371,4 +1421,18 @@ function rememberUrl(url: string) {
   try {
     setLastUrl(url);
   } catch { }
+}
+
+function embeddedAgent(url: string | undefined, token: string | undefined): EmbeddedAgent | null {
+  if (!url) return null;
+  return {
+    async send(content) {
+      const response = await fetch(`${url.replace(/\/$/, "")}/agent-text`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ text: content }),
+      });
+      return response.ok;
+    },
+  };
 }

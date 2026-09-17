@@ -6,7 +6,7 @@ import type { Pane, PaneDetails, Terminal } from "@zenbu-labs/pixel/terminal";
 
 const exec = promisify(execFile);
 
-export type TargetTier = "parent" | "agent" | "neighbor";
+export type TargetTier = "embed" | "parent" | "agent" | "neighbor";
 
 export interface AgentTarget {
   pane: string;
@@ -26,7 +26,14 @@ export interface AgentPaneContext {
   parentTty: string | null;
   cwd: string;
   self(): Promise<Pane | null>;
+  embedded?: EmbeddedAgent | null;
 }
+
+export interface EmbeddedAgent {
+  send(content: string): Promise<boolean>;
+}
+
+const EMBED_TARGET: AgentTarget = { pane: "embed", tier: "embed", agent: true };
 
 async function withCommands(panes: PaneDetails[]): Promise<PaneDetails[]> {
   if (!panes.some((pane) => pane.tty && pane.command == null)) return panes;
@@ -63,6 +70,10 @@ export class AgentPaneFinder {
   }
 
   async send(content: string): Promise<AgentTarget | null> {
+    if (this.ctx.embedded) {
+      const taken = await this.ctx.embedded.send(content).catch(() => false);
+      if (taken) return EMBED_TARGET;
+    }
     const terminal = this.ctx.terminal;
     if (!terminal?.sendText) return null;
     let target = await this.target();

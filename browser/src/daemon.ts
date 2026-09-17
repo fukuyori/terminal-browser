@@ -8,6 +8,7 @@ import { app } from "electron";
 import { DAEMON_SOCKET } from "pixel-store";
 import { createSession } from "./session/session";
 import type { SessionHandle } from "./session/session";
+import { servePages } from "./pages/scheme";
 
 // what
 const IDLE_EXIT_MS = 15_000;
@@ -41,6 +42,12 @@ export async function runDaemon(cdpPort: number | null): Promise<void> {
 
   const build = buildStamp();
   const sessions = new Map<string, SessionHandle>();
+  servePages(() => {
+    const all = [...sessions.values()];
+    const shown = all.filter((open) => open.showsStartPage());
+    const chosen = shown[shown.length - 1] ?? all[all.length - 1];
+    return chosen?.pageContext() ?? { cwd: process.cwd(), theme: null };
+  });
   let seq = 0;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
