@@ -697,6 +697,10 @@ class Session {
       this.shutdown();
       return true;
     }
+    if (process.platform === "linux" && event.mods.ctrl && event.key === "c") {
+      this.showToast("ctrl+q to quit", "alert");
+      return true;
+    }
     if (this.pageMenu) {
       this.closePageMenu();
       if (event.key === "escape") return true;
