@@ -36,6 +36,23 @@ claude plugin install terminal-browser@terminal-browser
 Now you can run "/browser" inside claude code to open the browser
 
 
+### Configuration
+
+You can configure the terminal-browser plugin to include a tool that claude can use to open the browser itself. This is by default off, since claude can already use the `terminal-browser` CLI to open the browser inside the terminal. You can enable the tool by adding the following to your ` ~/.claude/settings.json`:
+
+```json
+{
+  "pluginConfigs": {
+    "terminal-browser@terminal-browser": {
+      "options": {
+        "agentTool": true
+      }
+    }
+  }
+}
+```
+
+
 ## Plugin API
 
 The terminal-browser plugin comes with an API you can use within another claude code plugin to programatically open the browser and load a URL. Some examples of useful plugins you can build with this are:
