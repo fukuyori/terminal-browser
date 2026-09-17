@@ -21,6 +21,9 @@ curl -fsSL https://terminal-browser.sh/install | bash
 brew install terminal-browser
 ```
 
+### Claude code plugin
+[Install instructions here](/claude-code-plugin/README.md)
+
 ### Usage
 ```
 terminal-browser # launches the browser
@@ -29,6 +32,8 @@ terminal-browser --split right # opens the browser in a split pane to the right
 terminal-browser open --ssh <user@host> <url> # performs all network requests through a remote server
 terminal-browser ls # lists open browsers
 terminal-browser action # an agent-browser compatible cli for interacting with open terminal-browsers
+terminal-browser upgrade # upgrade to the latest version
+
 ```
 
 
