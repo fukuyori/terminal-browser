@@ -16,6 +16,11 @@ Install terminal-browser
 curl -fsSL https://terminal-browser.sh/install | bash # or brew install terminal-browser
 ```
 
+Ensure you are on the latest version of claude code
+```
+claude update
+```
+
 Enable claude code UI plugins by adding this to `~/.claude/settings.json`:
 ```json
 {
@@ -53,7 +58,7 @@ You can configure the terminal-browser plugin to include a tool that claude can 
 ```
 
 
-## Plugin API
+## terminal-browser plugin API
 
 The terminal-browser plugin comes with an API you can use within another claude code plugin to programatically open the browser and load a URL. Some examples of useful plugins you can build with this are:
 - a `/tldraw` slash command that opens tldraw in the claude code split pane
