@@ -1,6 +1,6 @@
 # terminal-browser claude code plugin
 
-> This plugin is experimental and does have some issues documented in the [caveats section](#caveats).
+> This plugin is experimental and does have some [known limitations](#caveats)
 
 
 
