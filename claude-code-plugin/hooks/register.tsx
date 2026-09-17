@@ -308,6 +308,17 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  on('ui.scroll', { requestId: PANE }, async ($, e) => {
+    if (state.port === null || !state.open || e.by === 0) return {}
+    const kind = e.by < 0 ? 'scrollup' : 'scrolldown'
+    const ticks = Math.min(Math.round(Math.abs(e.by)) || 1, 10)
+    const x = e.pointer?.column ?? Math.floor((state.region?.cols ?? 0) / 2)
+    const y = e.pointer?.row ?? Math.floor((state.region?.rows ?? 0) / 2)
+    const events = Array.from({ length: ticks }, () => ({ type: 'mouse', kind, x, y }))
+    await post($, '/input', { events })
+    return {}
+  })
+
   on('ui.close', { id: PANE }, async ($, e, next) => {
     const r = await next(e)
     await browserClosed($)

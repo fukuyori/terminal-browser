@@ -111,7 +111,7 @@ const PixelMessage = z.discriminatedUnion("type", [
 const InputEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("mouse"),
-    kind: z.enum(["down", "up", "move"]),
+    kind: z.enum(["down", "up", "move", "scrollup", "scrolldown"]),
     button: z.enum(["left", "middle", "right", "none"]).optional(),
     x: z.number(),
     y: z.number(),
