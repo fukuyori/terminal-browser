@@ -110,8 +110,8 @@ Even if your terminal supports the required graphics feature, if you are running
 
 
 ## Caveats:
-- cannot render above 50fps while running inside claude code without risk of screen tearing (possible screen tearing regardless)
-  - if you see the screen slightly getting messed up, select the text around that area with your mouse to make the terminal correctly redraw the area
+- cannot render above 50fps while running inside claude code without risk of the terminal UI getting "messed up"
+  - if you still see the screen getting messed up, select the text around that area with your mouse to make the terminal correctly redraw the area
 - on Linux scroll only works usiing the arrow keys
 - the mouse position will sometimes be slightly off, since claude code does not enable pixel coordinate mouse reporting
 - the plugin needs to make fetch requests to a local http server to communicate with the terminal-browser CLI, which may cause a prompt to show in your OS that your terminal wants to access the local network
