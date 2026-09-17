@@ -18,7 +18,7 @@ const PANE = 'browser'
 const OPEN_TOOL = 'mcp__terminal-browser__open'
 const CLOSE_TOOL = 'mcp__terminal-browser__close'
 const START_URL = 'terminal-browser://start'
-const SETUP_URL = 'https://github.com/zenbu-labs/terminal-browser/tree/main/claude-code-plugin#setup'
+const INSTALL_URL = 'https://terminal-browser.sh'
 const REQUIRED_CAPABILITIES = ['embedding']
 const POLL_MS = 250
 const IDLE_POLL_MS = 600
@@ -47,23 +47,35 @@ async function terminalBrowserCommand($: EngineInterface): Promise<string[]> {
   return ['terminal-browser']
 }
 
-async function cliCapabilities($: EngineInterface, command: string[]): Promise<string[] | null> {
+async function checkCapabilities($: EngineInterface, command: string[]): Promise<{ ok: true } | { ok: false; installed: boolean }> {
+  let result: { stdout: string; exitCode: number }
   try {
-    const { stdout, exitCode } = await $.process.run([...command, 'capabilities'], { timeoutMs: 10_000 })
-    if (exitCode !== 0) return null
-    const line = stdout.split('\n').find((text: string) => text.startsWith('{'))
-    const parsed = line ? JSON.parse(line) : null
-    return parsed && Array.isArray(parsed.capabilities) ? parsed.capabilities : null
+    result = await $.process.run([...command, 'capabilities'], { timeoutMs: 10_000 })
   } catch {
-    return null
+    return { ok: false, installed: false }
   }
+  let capabilities: string[] = []
+  if (result.exitCode === 0) {
+    const line = result.stdout.split('\n').find((text: string) => text.startsWith('{'))
+    try {
+      const parsed = line ? JSON.parse(line) : null
+      if (parsed && Array.isArray(parsed.capabilities)) capabilities = parsed.capabilities
+    } catch {}
+  }
+  const ok = REQUIRED_CAPABILITIES.every(need => capabilities.includes(need))
+  return ok ? { ok: true } : { ok: false, installed: true }
 }
 
 async function startBridge($: EngineInterface): Promise<{ ok: true } | { ok: false; error: string }> {
   const command = await terminalBrowserCommand($)
-  const capabilities = await cliCapabilities($, command)
-  if (!capabilities || REQUIRED_CAPABILITIES.some(need => !capabilities.includes(need))) {
-    return { ok: false, error: `[placeholder copy: this terminal-browser can't open a browser pane — update it · setup: ${SETUP_URL}]` }
+  const check = await checkCapabilities($, command)
+  if (!check.ok) {
+    return {
+      ok: false,
+      error: check.installed
+        ? 'Newer terminal-browser version required, run terminal-browser upgrade'
+        : `Please install terminal-browser first - ${INSTALL_URL}`,
+    }
   }
   let report: unknown = null
   try {
@@ -252,14 +264,14 @@ export const register: Register = (on, options) => {
     return { text: opened.ok ? 'Opened terminal-browser' : opened.error }
   })
 
-  on('tool.call', { tool: OPEN_TOOL }, async ($, e) => {
+  on('tool.call', { tool: new RegExp(`^${OPEN_TOOL}$`) }, async ($, e) => {
     const url = (e as { url?: unknown }).url
     const opened = await openBrowser($, typeof url === 'string' ? url : null)
     if (!opened.ok) return { deny: `could not open the browser: ${opened.error}` }
     return { result: [{ type: 'text', text: `opened ${opened.url} ` }] }
   })
 
-  on('tool.call', { tool: CLOSE_TOOL }, async ($) => {
+  on('tool.call', { tool: new RegExp(`^${CLOSE_TOOL}$`) }, async ($) => {
     const closed = await closeBrowser($)
     return { result: [{ type: 'text', text: closed ? 'browser pane closed' : 'no browser pane was open (maybe the user closed it?)' }] }
   })
