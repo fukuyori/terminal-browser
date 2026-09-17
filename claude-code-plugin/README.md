@@ -33,6 +33,9 @@ claude plugin marketplace add zenbu-labs/terminal-browser
 claude plugin install terminal-browser@terminal-browser
 ```
 
+Now you can run "/browser" inside claude code to open the browser
+
+
 ## Plugin API
 
 The terminal-browser plugin comes with an API you can use within another claude code plugin to programatically open the browser and load a URL. Some examples of useful plugins you can build with this are:
