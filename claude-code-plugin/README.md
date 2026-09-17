@@ -117,7 +117,7 @@ In addition any terminals that are built on libghostty will support this feature
 
 You can find more libghostty based terminals here: [awesome-libghostty](https://github.com/Uzaaft/awesome-libghostty)
 
-Even if your terminal supports the required graphics feature, if you are running a multiplexer, the plugin may not work. This is because multiplexers rewrite the output of terminal programs and breaks terminal graphics commands. tmux support will be arriving soon (terminal-browser currently works in tmux, just not through the claude code plugin yet), and herdr is not yet supported until they implement the kitty graphics placeholders feature. Other multiplexers I have not tested, so if it does not work please file an issue and I will see if we can support this.
+Even if your terminal supports the required graphics feature, if you are running a multiplexer, the plugin may not work. This is because multiplexers rewrite the output of terminal programs and breaks terminal graphics commands. tmux support will be arriving soon (terminal-browser currently works in tmux, just not through the claude code plugin yet), and within herdr performance is very bad when running through the claude code plugin, but will likely improve soon. Other multiplexers I have not tested, so if it does not work please file an issue and I will see if we can support this.
 
 
 
@@ -125,7 +125,7 @@ Even if your terminal supports the required graphics feature, if you are running
 ## Caveats:
 - depends on your terminal supporting the [kitty graphics protocol]
 - cannot render above 50fps while running inside claude code without risk of the terminal UI getting "messed up"
-  - if you still see the screen getting messed up, select the text around that area with your mouse to make the terminal correctly redraw the area
+  - if you still see the screen getting messed up, select the text around that area with your mouse to make the terminal correctly redraw the area, or try resizing the pane till it looks right
 - the mouse position will sometimes be slightly off, since claude code does not enable pixel coordinate mouse reporting
 - the plugin needs to make fetch requests to a local http server to communicate with the terminal-browser CLI, which may cause a prompt to show in your OS that your terminal wants to access the local network
 - claude code sets a very high min width for the chat area, so its sometimes not possible to resize the browser to the size you want
