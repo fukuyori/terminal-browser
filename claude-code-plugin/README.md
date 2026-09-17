@@ -29,6 +29,19 @@ Enable claude code UI plugins by adding this to `~/.claude/settings.json`:
 ```
 
 
+## Updating
+
+Update the claude code plugin:
+```
+claude plugin update terminal-browser@terminal-browser
+```
+
+Update terminal-browser
+```
+terminal-browser upgrade
+```
+
+
 Install the terminal-browser plugin
 ```
 # set the marketplace
