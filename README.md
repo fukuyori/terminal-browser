@@ -72,6 +72,8 @@ After the browser engine starts and is displaying pixels in the terminal, it nee
 
 The outer UI of the browser is implemented using a graphics engine built on top of rust. The actual UI is defined inside react with a custom react renderer, which allows us to build the UI for the browser using typescript. The UI of the outer browser and the browser content itself is all drawn to the same shared canvas inside the rust engine, which allows us to layer UI on top of the browser.
 
+The underlying logic described here has been abstracted into a javascript library that you can use to build your own graphical applications in the terminal - https://github.com/zenbu-labs/pixel
+
 ### SSH
 The recommended way to use terminal-browser over ssh is running `terminal-browser --ssh <ssh arguments>`.
 
