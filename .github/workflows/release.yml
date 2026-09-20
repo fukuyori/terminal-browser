@@ -135,21 +135,41 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.ref }}
+          path: terminal-browser
+
+      - name: Read the pixel commit to build against
+        id: pixel
+        shell: pwsh
+        working-directory: terminal-browser
+        run: |
+          $commit = (Get-Content -LiteralPath pixel.commit -Raw).Trim()
+          if ($commit -notmatch '^[0-9a-f]{40}$') { throw "pixel.commit is not a commit: $commit" }
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/checkout@v4
+        with:
+          repository: fukuyori/pixel
+          ref: ${{ steps.pixel.outputs.commit }}
+          path: pixel
 
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: terminal-browser/package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            terminal-browser/pnpm-lock.yaml
+            pixel/pnpm-lock.yaml
 
       - uses: dtolnay/rust-toolchain@stable
-
-      - run: corepack pnpm install --frozen-lockfile
 
       - name: Resolve agent-browser version
         id: agent
         shell: pwsh
+        working-directory: terminal-browser
         run: |
           $ref = node scripts/agent-browser.mjs --ref
           "ref=$ref" >> $env:GITHUB_OUTPUT
@@ -158,16 +178,6 @@ jobs:
         with:
           path: ${{ env.TERMINAL_BROWSER_AGENT_CACHE }}
           key: agent-browser-${{ runner.os }}-${{ steps.agent.outputs.ref }}
-
-      - name: Test
-        shell: pwsh
-        run: |
-          corepack pnpm -r typecheck
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          corepack pnpm -r test
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test --manifest-path engine/Cargo.toml --workspace
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install Inno Setup
         shell: pwsh
@@ -204,17 +214,38 @@ jobs:
 
       - name: Build Windows payload and ZIP
         shell: pwsh
+        working-directory: terminal-browser
         run: |
           $options = @{
             Version = "${{ needs.prepare.outputs.version }}"
             Channel = "${{ needs.prepare.outputs.channel }}"
             Zip = $true
+            RequireCleanPixel = $true
           }
           if ($env:WINDOWS_SIGN -eq "true") { $options.Sign = $true }
           & .\scripts\build-windows.ps1 @options
 
+      - name: Test
+        shell: pwsh
+        run: |
+          Push-Location pixel
+          corepack pnpm --filter "@zenbu-labs/pixel" typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          corepack pnpm --filter "@zenbu-labs/pixel" test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path engine/Cargo.toml --workspace
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          Push-Location terminal-browser
+          corepack pnpm -r typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          corepack pnpm -r test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
       - name: Build Windows installer
         shell: pwsh
+        working-directory: terminal-browser
         run: |
           $options = @{}
           if ($env:WINDOWS_SIGN -eq "true") { $options.Sign = $true }
@@ -224,10 +255,10 @@ jobs:
         with:
           name: windows-release-windows-x64
           path: |
-            dist-release/terminal-browser-*-windows-x64.zip
-            dist-release/manifest-windows-x64.json
-            dist-release/terminal-browser-*-windows-x64.exe
-            dist-release/manifest-installer-windows-x64.json
+            terminal-browser/dist-release/terminal-browser-*-windows-x64.zip
+            terminal-browser/dist-release/manifest-windows-x64.json
+            terminal-browser/dist-release/terminal-browser-*-windows-x64.exe
+            terminal-browser/dist-release/manifest-installer-windows-x64.json
           if-no-files-found: error
 
   release:

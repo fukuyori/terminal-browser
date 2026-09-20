@@ -530,6 +530,73 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
 6. **lockfile** — 段階 3 の 6 でコミットした `pnpm-lock.yaml` が `file:` 参照と一致していないと `--frozen-lockfile` が失敗する。pixel を更新したときは、terminal-browser 側の `pnpm-lock.yaml` と `pixel.commit` を一緒に更新する
 7. **成果物** — アップロードの `path` は手順 2 のとおり変える。成果物名（`windows-release-windows-x64`）と、それを受け取る後続ジョブの `pattern: windows-release-*` は変えなくてよい
 
+実施後の `windows` ジョブの流れ:
+
+| # | ステップ | 作業ディレクトリ |
+|---|---|---|
+| 1 | terminal-browser を `terminal-browser/` へ取得 | — |
+| 2 | `pixel.commit` を読む（40 桁の書式を検査する） | `terminal-browser` |
+| 3 | `fukuyori/pixel` を その コミットで `pixel/` へ取得 | — |
+| 4 | pnpm・Node・Rust を用意 | — |
+| 5 | agent-browser のキャッシュ鍵を解決 | `terminal-browser` |
+| 6 | Inno Setup を導入 | — |
+| 7 | 署名証明書を準備 | — |
+| 8 | `build-windows.ps1 -Zip -RequireCleanPixel`（署名鍵があれば `-Sign`） | `terminal-browser` |
+| 9 | テスト（pixel の typecheck・test・`cargo test`、terminal-browser の typecheck・test） | ワークスペース直下 |
+| 10 | `package-windows-inno.ps1` | `terminal-browser` |
+| 11 | 成果物をアップロード | — |
+
+テストを 8 のあとに置いたのは、`build-windows.ps1` が両方のチェックアウトに
+`pnpm install --frozen-lockfile` を行い pixel をビルドするため。先にテストを走らせると
+インストール前の状態を見ることになる。9 が失敗すれば 10・11 には進まない。
+
+`CARGO_TARGET_DIR` はジョブ全体に設定されているので、pixel の `build:native` と
+9 の `cargo test` は同じターゲットディレクトリを使う。
+
+#### 状態: 実装済み、CI 実行での検証待ち
+
+ワークフローは書き換えたが、**まだ一度も動かしていない**。正しさは実行しないと分からない。
+
+**検証の前提: 取得対象のコミットが push されていること**
+
+手順 3 は `pixel.commit` の SHA で `fukuyori/pixel` を checkout する。この SHA が
+リモートに無ければ、`actions/checkout` は `No commit found` で失敗する。
+2026-09-20 時点で `fukuyori/pixel` に `windows-v0.11.1` ブランチは無く、
+`f9b8746`・`2ad2ead`・`7002209` はローカルにしか無い。
+
+したがって検証の順序は次になる。
+
+1. pixel の `windows-v0.11.1` を push（`pixel.commit` の指す SHA がリモートに載る）
+2. terminal-browser の `windows-v0.11.1` を push
+3. ワークフローを動かす
+
+`fukuyori/pixel` は公開リポジトリなので、`actions/checkout` に追加の PAT は要らない。
+
+**どう動かすか**
+
+`release.yml` のトリガーと、GitHub Release への登録可否。
+
+| 起動方法 | `channel` | GitHub Release 登録 |
+|---|---|---|
+| タグ push（`v*` / `*-win.*`） | `stable` | される |
+| `workflow_dispatch` + `bump` が `patch`/`minor`/`major` | `stable`（タグを自動作成して push する） | される |
+| `workflow_dispatch` + `bump=none`（既定） | `dev` | されない |
+| `main` への push | `dev` | されない |
+| その他のブランチへの push | — | トリガーされない |
+
+登録は `if: needs.prepare.outputs.channel == 'stable'` で守られているので、
+**`bump=none` の手動実行なら公開処理まで進まない**。ジョブの通し確認にはこれを使う。
+
+ただし `dev` でも `Publish`（`scripts/publish-r2.sh` による Cloudflare R2 への
+アップロード）は条件なしで走る。確認のための実行でも R2 には上がる。
+
+**確認できていないこと**
+
+- `actions/checkout` が作る detached HEAD に対して、`build-windows.ps1` の
+  `git rev-parse HEAD` が `pixel.commit` と一致するか
+- `CARGO_TARGET_DIR` をワークスペース外に置いた状態で pixel の `build:native` が通るか
+- windows ランナーでの所要時間（pixel のビルドが加わる）
+
 ### 段階 6: 実機確認
 
 - 描画（ビットマップ経路）、入力、マウス座標（upstream `#105` の変更を含む）
