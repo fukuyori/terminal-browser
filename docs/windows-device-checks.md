@@ -180,8 +180,106 @@ passed, and ending the owner left no process and no pipe behind.
 | --- | --- | --- |
 | D1 | `node cli\dist\main.js open --ssh <user@host> <url>` | The page loads through the remote host |
 | D2 | A host alias from your ssh config | It is accepted as the target |
-| D3 | Copy an image from a page | It pastes into another app as an image |
+| D3 | Paste an image into a page: copy one in another app, or copy a `.png` file, then paste into a file input or an editor | The picture arrives in the page |
 | D4 | `node cli\dist\main.js action` against an open browser | It lists targets and can open a tab |
+
+### Where group D stands
+
+Checked on 2026-09-20 at `07e8470`, with Pixel `7dd8282`, using the
+development CLI and real Electron. These were controlled integration checks
+with an embedded test transport, not a person watching Ghostty or WezTerm.
+
+| # | Result |
+| --- | --- |
+| D1 | SSH, remote page loading and frame generation confirmed; terminal appearance not checked |
+| D2 | The same path works with a host alias in a temporary SSH config passed with `-F`; terminal appearance not checked |
+| D3 | Not checked. The row asked for the wrong direction; see below |
+| D4 | With the local timeout change, the first call recovers automatically in 20.3 seconds and subsequent operations work. Terminal appearance and the cause of the initial stall remain unchecked |
+
+D1 and D2 used a temporary HTTP server bound only to the SSH server's
+loopback address. Its URL was unreachable locally without the tunnel. Both
+CLI launches loaded its unique page text, the remote server logged the
+requests, and the engine produced 800 by 600 RGBA frames containing the
+page's background colour. The temporary server stopped after the checks,
+and both browser launches and SSH tunnels were closed. The alias config
+lives under the ignored diagnostic directory; the user's SSH config was
+not changed.
+
+This test process inherited an `SSH_AUTH_SOCK` pointing to a missing WezTerm
+agent socket. Removing that variable only from the test subprocesses let
+Windows OpenSSH use the running Windows ssh-agent. Key authentication then
+worked without a prompt. No permanent environment setting was changed.
+
+D3 was written the wrong way round. `clipboard_image.rs` reads an image
+*from* the clipboard and hands it to the page: `from_paste` takes bitmap
+clipboard contents, and `image_path_from_paste` takes a copied file path or
+`file://` url and loads the picture behind it. Nothing there copies a picture
+out of a page, and the page's context menu has no such item either, so the row
+as first written asked for something that does not exist. The row above now
+asks for the direction the code has.
+
+For D4, a fresh agent-browser 0.33.0 session did not return from the first
+`action -- tab list --json` within 45 seconds. A second fresh session also
+stalled and was stopped after 15 seconds. Retrying in that same session
+returned in 425 ms; snapshot, Japanese text entry, clicking, evaluating the
+result and `action done` then succeeded. The browser and agent processes
+created for the check were stopped afterward.
+
+Before the local timeout change, `runAgent` in `cli/src/action.ts` called
+`spawnSync` with no `timeout`, so the recovery in `agentTabs` could not run
+while the first call was stuck. The local change gives each internal call
+20 seconds and treats a timeout as a failed call eligible for the existing
+reconnection path.
+
+The real agent-browser 0.33.0 was checked again with that change. A fresh
+session's first `action -- tab list --json` returned successfully after
+20,299 ms, without the test driver retrying the CLI command. Snapshot,
+Japanese text entry, clicking, evaluating the result and `action done`
+then passed in 205 to 270 ms each. The test driver shut down its browser
+and stopped its agent daemon after the check. This confirms recovery in
+the controlled integration setup; it does not identify the initial stall's
+cause or replace a visual check in a terminal.
+
+`agent-timeout.test.js` now calls the code it is about. Five of its tests
+drive `agentTabs` with a stand-in for the agent, so the reconnect, the order
+of the calls, the limit on attempts and the wording of what it reports are all
+the product's own. Writing that sequence separately had hidden a fault: the
+first version of the message carried the value of `--session` in it, which
+only showed once the real function was the one being asked.
+
+Three more drive `runAgent` itself, through a child, because `runAgent` blocks
+on `spawnSync` and a deadline inside the test process could never fire while it
+did. The child has its own deadline, so a `runAgent` that stopped passing one
+to `spawnSync` fails the test instead of hanging the suite. Taking the timeout
+out of `action.ts` was tried: both tests fail in about 20 seconds with
+"it is not giving spawnSync a deadline", and the suite finishes.
+
+`TERMINAL_BROWSER_AGENT_TIMEOUT_MS` shortens the deadline, which is how those
+tests stall for a second and a half rather than twenty. It takes a whole number
+of milliseconds and ignores anything else, because `spawnSync` refuses a
+fractional one.
+
+### What D4 still needs
+
+The waiting is dealt with; the stall is not.
+
+- **Why the first call stalls.** Nothing here explains it. The recovery makes
+  it cost a deadline rather than the rest of the session, which is not the
+  same as fixing it.
+- **Whether it is a Windows thing.** Not tried anywhere else.
+- **A person watching a terminal.** Everything above was a controlled check
+  with a stand-in or a driver. What the pane looks like while an agent works
+  in it has not been seen.
+
+Local evidence, kept outside Git:
+
+- `tools/stall-diagnostics/ssh-zqp7u3/`: D1/D2 results, remote request log,
+  temporary SSH config, browser listings and captured RGBA frames.
+- `tools/stall-diagnostics/d4-ERbqTC/`: the 45-second first-call timeout.
+- `tools/stall-diagnostics/d4-ADDILq/`: the 15-second timeout and successful
+  retry, including each command's output and timing.
+- `tools/stall-diagnostics/d4-DJa1d2/`: automatic recovery with the real
+  agent-browser and the local 20-second timeout change.
 
 ## E. The Claude Code plugin
 

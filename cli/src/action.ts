@@ -71,15 +71,46 @@ function childEnv(): NodeJS.ProcessEnv {
   return { ...process.env, AGENT_BROWSER_SOCKET_DIR: AGENT_SOCKETS_DIR };
 }
 
-function runAgent(binary: string, args: string[]): { status: number; stdout: string } {
+const AGENT_TIMEOUT_MS = 20_000;
+
+/** How long one agent-browser call may take. Tests shorten it; so can a slow machine. */
+function agentTimeout(): number {
+  const asked = Number(process.env.TERMINAL_BROWSER_AGENT_TIMEOUT_MS);
+  return Number.isSafeInteger(asked) && asked > 0 ? asked : AGENT_TIMEOUT_MS;
+}
+
+export type AgentRun = { status: number; stdout: string; timedOut: boolean; ms: number };
+
+/**
+ * An agent call that never answers would otherwise be waited on forever, so it
+ * is given a deadline. A call that runs out of time is not the same as one
+ * that could not start: the caller decides whether to try again.
+ */
+export function runAgent(binary: string, args: string[]): AgentRun {
+  const started = Date.now();
   const result = spawnSync(binary, args, {
     encoding: "utf8",
     env: childEnv(),
     stdio: ["ignore", "pipe", "pipe"],
+    timeout: agentTimeout(),
   });
-  if (result.error) throw result.error;
+  const ms = Date.now() - started;
+  const timedOut = (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
+  if (result.error && !timedOut) throw result.error;
   if (result.stderr) process.stderr.write(result.stderr);
-  return { status: result.status ?? 1, stdout: result.stdout ?? "" };
+  return { status: timedOut ? 1 : result.status ?? 1, stdout: result.stdout ?? "", timedOut, ms };
+}
+
+const FLAGS_WITH_A_VALUE = new Set(["--session", "--cdp"]);
+
+function agentGaveUp(args: string[], runs: AgentRun[]): Error {
+  const spent = runs.reduce((total, run) => total + run.ms, 0);
+  const what = args
+    .filter((arg, i) => !arg.startsWith("-") && !FLAGS_WITH_A_VALUE.has(args[i - 1]))
+    .join(" ");
+  return new Error(
+    `agent-browser did not answer "${what}" after ${runs.length} attempts in ${Math.round(spent / 1000)}s`,
+  );
 }
 
 function parseTabs(stdout: string): AgentTab[] {
@@ -98,21 +129,35 @@ function evalResult(stdout: string): unknown {
   return parsed.data?.result;
 }
 
-function agentTabs(binary: string, browser: Browser): AgentTab[] {
+/**
+ * The tabs agent-browser can see on this browser. A first call that never
+ * answers is what the reconnect below is for; `run` is how a test drives that
+ * without an agent to stall.
+ */
+export function agentTabs(
+  binary: string,
+  browser: Browser,
+  run: (binary: string, args: string[]) => AgentRun = runAgent,
+): AgentTab[] {
   const session = sessionName(browser);
   const port = String(browser.cdpPort);
-  const listing = runAgent(binary, ["--session", session, "--cdp", port, "tab", "list", "--json"]);
+  const listArgs = ["--session", session, "tab", "list", "--json"];
+  const listing = run(binary, ["--session", session, "--cdp", port, "tab", "list", "--json"]);
   if (listing.status === 0) {
     try {
       return parseTabs(listing.stdout);
     } catch {}
   }
-  const reconnect = runAgent(binary, ["--session", session, "connect", port, "--json"]);
+  const reconnect = run(binary, ["--session", session, "connect", port, "--json"]);
   if (reconnect.status !== 0) {
+    if (reconnect.timedOut) throw agentGaveUp(["connect"], [listing, reconnect]);
     throw new Error(`could not connect agent-browser to terminal browser ${recordKey(browser)} on port ${port}`);
   }
-  const retry = runAgent(binary, ["--session", session, "tab", "list", "--json"]);
-  if (retry.status !== 0) throw new Error("agent-browser could not list tabs after reconnecting");
+  const retry = run(binary, listArgs);
+  if (retry.status !== 0) {
+    if (retry.timedOut) throw agentGaveUp(listArgs, [listing, reconnect, retry]);
+    throw new Error("agent-browser could not list tabs after reconnecting");
+  }
   return parseTabs(retry.stdout);
 }
 
@@ -132,8 +177,13 @@ function matchTab(
       `cannot tell which of ${candidates.length} tabs on ${tab.url} is terminal browser tab ${tab.id}`,
     );
   }
+  const slow: AgentRun[] = [];
   for (const candidate of candidates) {
-    runAgent(binary, ["--session", session, "tab", candidate.tabId]);
+    const chosen = runAgent(binary, ["--session", session, "tab", candidate.tabId]);
+    if (chosen.timedOut) {
+      slow.push(chosen);
+      continue;
+    }
     const probe = runAgent(binary, [
       "--session",
       session,
@@ -141,11 +191,13 @@ function matchTab(
       "performance.timeOrigin",
       "--json",
     ]);
+    if (probe.timedOut) slow.push(probe);
     if (probe.status !== 0) continue;
     try {
       if (evalResult(probe.stdout) === tab.timeOrigin) return { ...candidate, active: true };
     } catch {}
   }
+  if (slow.length > 0) throw agentGaveUp(["tab", "eval"], slow);
   throw new Error(`could not find terminal browser tab ${tab.id} (${tab.url}) among agent-browser's tabs`);
 }
 
@@ -286,6 +338,7 @@ export async function actionCommand(terminal: Terminal | null, options: ActionOp
   const match = matchTab(binary, session, agentTabs(binary, browser), tab);
   if (!match.active) {
     const switched = runAgent(binary, ["--session", session, "tab", match.tabId]);
+    if (switched.timedOut) throw agentGaveUp(["tab", match.tabId], [switched]);
     if (switched.status !== 0) throw new Error(`agent-browser could not switch to ${match.tabId}`);
   }
   if (options.follow && !tab.active) {
