@@ -4,7 +4,7 @@
 #endif
 #define MyAppPublisher "Zenbu Labs, Inc."
 #define MyAppURL "https://github.com/zenbu-labs/terminal-browser"
-#define MyAppExeName "electron\electron.exe"
+#define MyAppExeName "electron\pixel.exe"
 
 [Setup]
 AppId={{A246C19C-B579-4EFA-9101-1AB8E4314527}

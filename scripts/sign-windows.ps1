@@ -52,7 +52,7 @@ function ResolveSignTool([string]$Explicit) {
 # is signed already so this can run after each build step.
 function DefaultTargets {
     $targets = @()
-    $targets += Join-Path $payload "browser\native\pixel.node"
+    $targets += Join-Path $payload "browser\node_modules\@zenbu-labs\pixel-native-win32-x64\pixel.node"
     if (Test-Path -LiteralPath $payload) {
         $electron = Join-Path $payload "electron"
         $targets += (Get-ChildItem -LiteralPath $payload -Include *.exe, *.dll -File -Recurse |

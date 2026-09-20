@@ -10,16 +10,16 @@ A real browser that runs inside your Windows terminal.
 
 This repository is a Windows-specific fork of
 [zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser). The current
-release is based on upstream v0.8.0. This README covers the Windows fork only; documentation for
+release is based on upstream v0.11.1. This README covers the Windows fork only; documentation for
 other platforms remains in the original project.
 
-| Area | Upstream v0.8.0 | This Windows fork |
+| Area | Upstream v0.11.1 | This Windows fork |
 | --- | --- | --- |
 | Runtime | Original terminal and process integrations | Windows x64 port using Win32 Console, ConPTY, named pipes, and Windows paths |
 | Graphics | Kitty graphics rendering | WezTerm file-frame transport and a Windows-specific iTerm2 PNG fallback |
 | Distribution | Original release process | Inno Setup installer, versioned portable ZIP, Authenticode signing, and automated Windows release jobs |
 | SSH and setup | Original SSH and skill workflows | Windows OpenSSH and `tar.exe` handling, plus Windows-compatible skill setup |
-| Version | `v0.8.0` | `0.8.0-win.1`, identifying the upstream base and Windows revision |
+| Version | `v0.11.1` | `0.11.1-win.1`, identifying the upstream base and Windows revision |
 
 Features incorporated from upstream and changes unique to each Windows release are listed in the
 [changelog](CHANGELOG.md).
@@ -135,12 +135,12 @@ Japanese, installs per user, can update the user `PATH`, and can create a WezTer
 ### Windows versioning
 
 Windows fork versions combine the upstream version and a fork revision. For example,
-`0.8.0-win.1` is the first Windows release based on upstream v0.8.0.
+`0.11.1-win.1` is the first Windows release based on upstream v0.11.1.
 
 Set the default with `Version` in `scripts\build-windows.ps1`, or pass `-Version` for a one-off
 build. The value is written to `VERSION` and displayed by `terminal-browser --version`.
 
-Inno Setup requires a numeric four-part version, so `0.8.0-win.1` becomes `0.8.0.1` in the
+Inno Setup requires a numeric four-part version, so `0.11.1-win.1` becomes `0.11.1.1` in the
 installer. Versions outside this format use `0.0.0.0` for the installer version.
 
 `terminal-browser upgrade` does not update the Windows fork. On Windows it stops and directs

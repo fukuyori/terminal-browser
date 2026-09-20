@@ -226,7 +226,7 @@ upstream v0.11.1 から新しいブランチを作り、フォークの変更を
 | terminal-browser | `scripts/package-windows-inno.ps1` の必須ファイル一覧 | `electron\electron.exe`（28 行目） | 4 |
 | terminal-browser | `installer/terminal-browser.iss` の `MyAppExeName`（アンインストール時のアイコン） | `electron\electron.exe`（7 行目） | 4 |
 
-フォークの `scripts/fetch-electron.mjs`（20 行目）も `electron.exe` を参照しているが、Electron を pixel から取るようになるため段階 4 で不要になる。`scripts/sign-windows.ps1` は `electron` ディレクトリの `*.exe` を列挙するので変更は要らない。
+フォークの `scripts/fetch-electron.mjs` も `electron.exe` を参照していたが、Electron を pixel から取るようになったため段階 4 で削除した。`scripts/sign-windows.ps1` は `electron` ディレクトリの `*.exe` を列挙するので変更は要らない。
 
 改名後は、Electron の解決経路ごとに `pixel.exe` から起動できることを確認する（段階 6）。
 
@@ -463,26 +463,40 @@ v0.11.1 の `scripts/release.sh` に合わせる。
    4. pixel をビルドする: `../pixel` で `corepack pnpm install --frozen-lockfile`、`pnpm --filter @zenbu-labs/pixel build`、`pnpm --filter @zenbu-labs/pixel build:native -- --release`
    5. terminal-browser で `corepack pnpm install --frozen-lockfile` を実行し、ビルドした pixel を `node_modules` に取り込む（`file:` 参照はインストール時にパッケージをコピーするため。`scripts/link-pixel.sh` のコメントに記載がある）。通常のインストールで取り込まれないと分かった場合は、取り込みを確実にする処理をここに入れる（下の完了条件 2）
    6. ペイロードを作る（下の項目 2 以降）。`-Sign`・`-Zip` の扱いは現行どおり
-2. ペイロードの作り方を上表に合わせる。Electron は pixel から取るため、`scripts/fetch-electron.mjs` と `browser/package.json` からの呼び出しは不要になる
+2. ペイロードの作り方を上表に合わせる。Electron は pixel から取るため、`scripts/fetch-electron.mjs` と `browser/package.json` からの呼び出しを削除した。pixel の中のネイティブパッケージと Electron の場所は `scripts/pixel-paths.mjs` が解決する（`node -e` に PowerShell のヒアストリングを渡すと引用符が失われるため、スクリプトに切り出した）
 3. `scripts/bundle.mjs` から `pixel-react`・`pixel-terminals` の別名を外し、`bundle.sh` と同じ外部指定にする
 4. `scripts/sign-windows.ps1` の署名対象 `browser\native\pixel.node` を新しい場所に変える
 5. `scripts/package-windows-inno.ps1` の必須ファイル一覧の `browser\native\pixel.node` を新しい場所に変える
 6. Electron の実行ファイル名を `pixel.exe` にそろえる: `cli/src/main.ts` の `ELECTRON_DIST_BIN`・`ELECTRON_DEV_BIN`、`scripts/build-windows.ps1` の存在確認、`scripts/package-windows-inno.ps1` の必須ファイル（`electron\pixel.exe`）、`installer/terminal-browser.iss` の `MyAppExeName`（`electron\pixel.exe`）
 7. `docs/version-update-checklist.md` に従いバージョンを `0.11.1-win.1` に更新する（`scripts/build-windows.ps1` の `Version` の既定値、README 両言語、CHANGELOG 両言語）
 
+**誰がビルドするか**
+
+配布物（`dist-release/` 配下のペイロード、ZIP、インストーラー）は Claude は作らない。
+`dist-release/terminal-browser/` は署名の対象そのものなので、`-Zip` の有無にかかわらず
+これを作る実行は配布物の作成に当たる。
+
+| 実施者 | 目的 | 実行するもの |
+|---|---|---|
+| CI（`release.yml`） | GitHub Release に登録する成果物 | タグを打つと署名付きで全部 |
+| 利用者 | 手元での確認 | `build-windows.ps1 -Zip -Sign -RequireCleanPixel` と `package-windows-inno.ps1 -Sign` |
+| Claude | スクリプトの変更 | ソースの編集のみ。ビルドは行わない |
+
+したがって下の完了条件は、**スクリプト自身が検査して満たす**形にする。人が毎回手で
+比べる前提にはしない。CI でも同じ検査が働く。
+
 **完了条件**（生成物の鮮度）
 
 1. **古い生成物を残さない** — `-RequireCleanPixel` 指定時に、`packages/pixel/dist/` と `packages/native/win32-x64/pixel.node` を削除してから作り直していること。削除対象がこの 2 つに限られていること
-2. **新しい pixel が本体に入る** — pixel 側を変更して `build-windows.ps1 -RequireCleanPixel` を再実行し、次をすべて満たすこと
-   - 確認用の変更: pixel の JavaScript に識別できる文字列を加え、ネイティブ側も変更してコミットし、`pixel.commit` を更新する。JavaScript だけの変更では lockfile が変わらないため、通常の `pnpm install` がコピーし直さない場合を確かめられる
-   - 本体の `node_modules`: `browser/` から `require.resolve` で辿れる `@zenbu-labs/pixel` の JavaScript に、加えた文字列が入っている
-   - 最終ペイロード: `dist-release/terminal-browser/browser/dist/main.js` と `cli/dist/main.js` のバンドルに、加えた文字列が入っている
-   - **署名前**: 次の 3 つの `pixel.node` の SHA-256 が一致する。`-Sign` で署名するとペイロード内の `pixel.node` の内容が変わり、pixel 側の未署名ファイルとは一致しなくなるため、必ず署名の前に比較する（`-Sign` を付けずに実行した結果で比較するか、`-Sign` 付きの実行では `build-windows.ps1` が署名を呼ぶ前に比較する）
-     - `../pixel/packages/native/win32-x64/pixel.node`
-     - `browser/` から `require.resolve` で辿れる `@zenbu-labs/pixel-native-win32-x64` の `pixel.node`
-     - `dist-release/terminal-browser/browser/node_modules/@zenbu-labs/pixel-native-win32-x64/pixel.node`
-   - **署名後**: `-Sign` 付きで実行したとき、ペイロード内の `pixel.node` と Electron のバイナリ（`pixel.exe` を含む）の署名が有効である（`Get-AuthenticodeSignature` が `Valid` を返す。`scripts/sign-windows.ps1` は署名後にこれを検査する）
-   - 通常の `pnpm install --frozen-lockfile` で更新されなかった場合は、手順 1 の 5 に取り込みを確実にする処理を入れ、この確認を通してから完了とする
+2. **新しい pixel が本体に入る** — `build-windows.ps1` が署名を呼ぶ前に、次の 3 つの `pixel.node` の SHA-256 を比較し、一致しなければ停止すること。署名はペイロード内の `pixel.node` を書き換えるので、比較は必ずその前に行う
+   - `../pixel/packages/native/win32-x64/pixel.node`
+   - `browser/` から辿れる `@zenbu-labs/pixel-native-win32-x64` の `pixel.node`（`scripts/pixel-paths.mjs native`）
+   - `dist-release/terminal-browser/browser/node_modules/@zenbu-labs/pixel-native-win32-x64/pixel.node`
+3. **署名が付く** — `-Sign` 付きで実行したとき、ペイロード内の `pixel.node` と Electron のバイナリ（`pixel.exe` を含む）の署名が有効である（`Get-AuthenticodeSignature` が `Valid` を返す。`scripts/sign-windows.ps1` は署名後にこれを検査する）
+
+JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピーされることに依存する。
+2 の検査はネイティブについてこれを確かめるもので、JavaScript が古いままなら
+ネイティブも古いままになるため、同じ検査で気づける。
 
 ### 段階 5: CI を 2 リポジトリ構成にする
 
@@ -534,7 +548,7 @@ v0.11.1 の `scripts/release.sh` に合わせる。
 - 標準 Electron 44.2.0 での描画（段階 1 で確認する）
 - 名前付きパイプに対する `fs.existsSync` の挙動（Node 24.14.1 でのみ確認済み。段階 1 で実際のランタイムで確認する）
 - `appLog` の出力先
-- pixel を再ビルドしたあと、terminal-browser の `pnpm install --frozen-lockfile` が lockfile に変化が無くても `file:` 参照のコピーを新しいビルドで更新するか（段階 4 の完了条件 2 で確認する）
+- pixel を再ビルドしたあと、terminal-browser の `pnpm install --frozen-lockfile` が lockfile に変化が無くても `file:` 参照のコピーを新しいビルドで更新するか。2026-09-20 に手動で確認した範囲では更新された（pixel を変更してコミットし、`pixel.commit` を更新して再ビルドしたところ、`node_modules` と両方のバンドルに識別文字列が入り、ネイティブ 3 か所のハッシュが揃って変わった）。以後は段階 4 の完了条件 2 の検査が `build-windows.ps1` の中で毎回これを確かめる
 - 展開済み Electron を再利用するときの検証方法（段階 1 の手順 3 で確認する）
 - 配布後のネイティブパッケージ解決と Electron の配置（段階 4 で `release.sh` に合わせ、段階 6 で確認する）
 - テストファイルの移植量（3 方向マージは未試算）

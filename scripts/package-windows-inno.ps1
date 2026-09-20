@@ -23,9 +23,9 @@ $iss = Join-Path $root "installer\terminal-browser.iss"
 
 $required = @(
     "bin\terminal-browser.cmd",
-    "browser\native\pixel.node",
+    "browser\node_modules\@zenbu-labs\pixel-native-win32-x64\pixel.node",
     "agent-browser\bin\agent-browser.exe",
-    "electron\electron.exe",
+    "electron\pixel.exe",
     "runtime\node.exe",
     "skills\manifest",
     "VERSION"

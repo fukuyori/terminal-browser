@@ -1,9 +1,10 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.8.0-win.1",
+    [string]$Version = "0.11.1-win.1",
     [string]$Channel = "windows",
     [string]$AgentBrowserPath = "",
     [switch]$Sign,
+    [switch]$RequireCleanPixel,
     [switch]$Zip
 )
 
@@ -26,6 +27,50 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     throw "Windows x64 is required"
 }
 
+$pixel = [IO.Path]::GetFullPath((Join-Path $root "..\pixel"))
+if (-not (Test-Path -LiteralPath (Join-Path $pixel "packages\pixel\package.json"))) {
+    throw "no pixel checkout at $pixel"
+}
+$wanted = (Get-Content -LiteralPath (Join-Path $root "pixel.commit") -Raw).Trim()
+$head = (git -C $pixel rev-parse HEAD).Trim()
+if ($head -ne $wanted) {
+    throw "pixel is at $head but pixel.commit asks for $wanted"
+}
+if ($RequireCleanPixel) {
+    $dirty = git -C $pixel status --porcelain
+    if ($dirty) {
+        throw "pixel has uncommitted changes:`n$($dirty -join "`n")"
+    }
+    # tsc leaves the output of deleted sources behind, and a failed native build
+    # leaves the last one, so these two are made again from scratch.
+    foreach ($stale in @("packages\pixel\dist", "packages\native\win32-x64\pixel.node")) {
+        $path = Join-Path $pixel $stale
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+    }
+}
+
+Push-Location $pixel
+try {
+    corepack pnpm install --frozen-lockfile
+    if ($LASTEXITCODE -ne 0) { throw "pixel install failed" }
+    corepack pnpm --filter "@zenbu-labs/pixel" build
+    if ($LASTEXITCODE -ne 0) { throw "pixel build failed" }
+    corepack pnpm --filter "@zenbu-labs/pixel" build:native -- --release
+    if ($LASTEXITCODE -ne 0) { throw "pixel native build failed" }
+} finally {
+    Pop-Location
+}
+
+# file: dependencies are copied in, so this is what carries the pixel just
+# built into browser/ and cli/.
+Push-Location $root
+try {
+    corepack pnpm install --frozen-lockfile
+    if ($LASTEXITCODE -ne 0) { throw "install failed" }
+} finally {
+    Pop-Location
+}
+
 if (Test-Path -LiteralPath $out) {
     $resolvedRoot = [IO.Path]::GetFullPath($root).TrimEnd('\')
     $resolvedOut = [IO.Path]::GetFullPath($out).TrimEnd('\')
@@ -39,7 +84,7 @@ $directories = @(
     "bin",
     "cli\dist",
     "browser\dist",
-    "browser\native",
+    "browser\node_modules\@zenbu-labs",
     "electron",
     "runtime",
     "agent-browser\bin",
@@ -51,21 +96,13 @@ foreach ($directory in $directories) {
     New-Item -ItemType Directory -Path (Join-Path $stage $directory) -Force | Out-Null
 }
 
-Push-Location (Join-Path $root "engine")
-try {
-    cargo build -p pixel-node --release
-    if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
-} finally {
-    Pop-Location
+# pixel looks its engine binary up in this package at run time, so the payload
+# carries the package rather than a loose library.
+$nativePackage = node (Join-Path $root "scripts\pixel-paths.mjs") native
+if ($LASTEXITCODE -ne 0 -or -not $nativePackage -or -not (Test-Path -LiteralPath (Join-Path $nativePackage "pixel.node"))) {
+    throw "@zenbu-labs/pixel-native-win32-x64 is not installed in browser/"
 }
-
-$native = if ($env:CARGO_TARGET_DIR) {
-    Join-Path $env:CARGO_TARGET_DIR "release\pixel_node.dll"
-} else {
-    Join-Path $root "engine\target\release\pixel_node.dll"
-}
-if (-not (Test-Path -LiteralPath $native)) { throw "missing native library: $native" }
-Copy-Item -LiteralPath $native -Destination (Join-Path $stage "browser\native\pixel.node")
+Copy-Item -LiteralPath $nativePackage -Destination (Join-Path $stage "browser\node_modules\@zenbu-labs\pixel-native-win32-x64") -Recurse -Force
 
 $esbuild = Join-Path $root "node_modules\esbuild\bin\esbuild"
 if (-not (Test-Path -LiteralPath $esbuild)) {
@@ -96,10 +133,12 @@ foreach ($asset in @("index.global.js", "logo.png")) {
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "assets\react-grab")
 }
 
-$electronDist = Join-Path $root "browser\node_modules\electron\dist"
-$electron = Join-Path $electronDist "electron.exe"
-if (-not (Test-Path -LiteralPath $electron)) {
-    throw "missing Windows Electron; run corepack pnpm install first"
+$electronDist = node (Join-Path $root "scripts\pixel-paths.mjs") electron
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $electronDist ".zenbu-electron-sha256"))) {
+    throw "pixel has not installed its electron; run corepack pnpm install first"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $electronDist "pixel.exe"))) {
+    throw "missing electron\pixel.exe in $electronDist"
 }
 Copy-Item -Path (Join-Path $electronDist "*") -Destination (Join-Path $stage "electron") -Recurse -Force
 
@@ -130,6 +169,23 @@ set "TERMINAL_BROWSER_DIST_ROOT=%~dp0.."
 Set-Content -LiteralPath (Join-Path $stage "bin\terminal-browser.cmd") -Value $launcher -Encoding ascii
 Set-Content -LiteralPath (Join-Path $stage "VERSION") -Value $Version -Encoding ascii
 Set-Content -LiteralPath (Join-Path $stage "CHANNEL") -Value $Channel -Encoding ascii
+
+# The engine binary travels from the pixel checkout through node_modules and
+# into the payload, and a stale copy at either step is silent. Compare them
+# before signing, which rewrites the payload's copy and would hide the answer.
+$engineCopies = [ordered]@{
+    "pixel checkout" = Join-Path $pixel "packages\native\win32-x64\pixel.node"
+    "node_modules"   = Join-Path $nativePackage "pixel.node"
+    "payload"        = Join-Path $stage "browser\node_modules\@zenbu-labs\pixel-native-win32-x64\pixel.node"
+}
+$engineHashes = [ordered]@{}
+foreach ($where in $engineCopies.Keys) {
+    $engineHashes[$where] = (Get-FileHash -LiteralPath $engineCopies[$where] -Algorithm SHA256).Hash
+}
+if (($engineHashes.Values | Select-Object -Unique).Count -ne 1) {
+    $detail = ($engineHashes.Keys | ForEach-Object { "  $_`: $($engineHashes[$_])" }) -join "`n"
+    throw "the engine binary differs between where it was built and where it is used:`n$detail"
+}
 
 # Before the zip, so a portable copy carries the signatures too. The installer
 # signs itself at packaging time, once these are inside it.

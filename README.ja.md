@@ -9,16 +9,16 @@ Windowsターミナル内で動作する本物のブラウザです。
 ## オリジナル版との関係
 
 このリポジトリは、[zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser)
-をWindows向けに移植したフォークです。現在のリリースは上流v0.8.0を基にしています。このREADMEは
+をWindows向けに移植したフォークです。現在のリリースは上流v0.11.1を基にしています。このREADMEは
 Windowsフォークだけを対象としています。
 
-| 項目 | 上流v0.8.0 | このWindowsフォーク |
+| 項目 | 上流v0.11.1 | このWindowsフォーク |
 | --- | --- | --- |
 | 実行環境 | オリジナルのターミナル・プロセス連携 | Win32 Console、ConPTY、名前付きパイプ、Windowsパスを使用するWindows x64移植 |
 | 描画 | kitty graphicsによる描画 | WezTermのファイルフレーム転送とWindows固有のiTerm2 PNGフォールバック |
 | 配布 | オリジナルのリリース処理 | Inno Setupインストーラー、バージョン付きポータブルZIP、Authenticode署名、Windowsリリース自動化 |
 | SSH・セットアップ | オリジナルのSSH・skill処理 | Windows OpenSSHと`tar.exe`への対応、Windows互換のskill setup |
-| バージョン | `v0.8.0` | 上流の基準版とWindows改訂番号を表す`0.8.0-win.1` |
+| バージョン | `v0.11.1` | 上流の基準版とWindows改訂番号を表す`0.11.1-win.1` |
 
 上流から取り込んだ機能と各Windowsリリース固有の変更は、
 [変更履歴](CHANGELOG.ja.md)を参照してください。
@@ -133,12 +133,12 @@ ZIPは任意作成で、サイズは約190 MBです。インストーラー作�
 ### Windows版のバージョン
 
 Windowsフォークのバージョンは、上流バージョンとフォークの改訂番号を組み合わせます。たとえば
-`0.8.0-win.1`は、上流v0.8.0を基にした最初のWindowsリリースです。
+`0.11.1-win.1`は、上流v0.11.1を基にした最初のWindowsリリースです。
 
 既定値は`scripts\build-windows.ps1`の`Version`で設定します。一時的に変更する場合は`-Version`を
 指定します。この値は`VERSION`へ書き込まれ、`terminal-browser --version`で表示されます。
 
-Inno Setupでは4要素の数値バージョンが必要なため、`0.8.0-win.1`はインストーラー内で`0.8.0.1`に
+Inno Setupでは4要素の数値バージョンが必要なため、`0.11.1-win.1`はインストーラー内で`0.11.1.1`に
 なります。この形式以外のバージョンでは、インストーラーのバージョンとして`0.0.0.0`を使用します。
 
 `terminal-browser upgrade`はWindowsフォークを自動更新しません。Windowsで実行すると処理を中止し、

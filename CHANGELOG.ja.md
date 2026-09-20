@@ -13,6 +13,29 @@ terminal-browser Windowsフォークの主な変更を記載します。
   回帰テストを追加しました。実際の Claude Code プラグインの描画確認は、Windows 移行の
   実機確認事項として残っています。
 
+## 0.11.1-win.1
+
+上流のterminal-browser v0.11.1を基にしています。以下は`0.8.0-win.1`以降の変更です。
+
+- **エンジンが別プロジェクトへ移動。** 上流が描画エンジンと端末連携を
+  [zenbu-labs/pixel](https://github.com/zenbu-labs/pixel)へ分離しました。本フォークは
+  隣に置いたpixelのチェックアウトを参照してビルドします。使用するコミットは
+  `pixel.commit`に記録し、Windows対応はpixel側へ移植しています。
+- **Windowsは標準のElectronを使用。** Windowsの端末へはビットマップでフレームを渡すため、
+  公開されているElectronでそのまま描画できます。パッチ済みビルドは不要です。
+- **Claude CodeブリッジのWindows対応。** ソケットファイルではなく名前付きパイプを使い、
+  独立して起動してから呼び出し元のコンソールに接続します。コピーは`clip.exe`が読める
+  エンコーディングで渡すため、日本語と改行が保持されます。
+- **ペイン名を持たない端末でのデーモン共有を解消。** コンソールの識別に、WezTermと
+  Windows Terminalに加えてGhosttyのsurface IDも参照します。
+- **上流に合わせて削除。** アプリモードのフラグ（`--app-mode`、`--preload`、
+  `--main-script`、`--app-name`、`--app-id`、`--open-tabs-in-popup-stack`、
+  `--no-toolbar`、`--no-shortcuts`、`--no-context-menu`、`--no-overlays`、`--no-frame`）と、
+  `--ssh-bundle`・`--ssh-bundle-dir`を削除しました。`--ssh`は維持します。この方式での
+  アプリ構築はpixelへ移行します。
+- **bashスクリプトをnodeへ変更。** `scripts/plugin-types.sh`を`scripts/plugin-types.mjs`に
+  置き換え、WindowsでNodeが起動できる実行ファイルを解決するようにしました。
+
 ## 0.8.0-win.1
 
 上流のterminal-browser v0.8.0を基にしています。以下は`0.5.8-win.1`以降の変更です。
