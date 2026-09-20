@@ -22,7 +22,7 @@ That is the development path: the CLI finds electron through the pixel
 package in `node_modules`. Groups D and E use a built package instead, which
 is the maintainer's to build with `-Sign`.
 
-Quit with the browser's own quit (Ctrl+Q) unless a step says otherwise.
+Quit with Ctrl+Shift+Q. Ctrl+Q is taken by the terminal itself.
 
 ## A. Drawing and input
 
@@ -31,13 +31,33 @@ Quit with the browser's own quit (Ctrl+Q) unless a step says otherwise.
 | A1 | Launch with a url | The page is drawn in the pane |
 | A2 | Scroll with the wheel | The page scrolls, without tearing |
 | A3 | Click a link | It follows the link, and the click lands where the pointer is |
-| A4 | Type into a text field | The characters arrive, including Japanese through the IME |
+| A4 | Type into a text field | The characters arrive, including Japanese through the IME. See [where the IME box goes](#where-the-ime-box-goes) |
 | A5 | Drag to select text | The selection follows the pointer |
 | A6 | Resize the terminal window | The page reflows to the new size, and nothing is left drawn outside it |
-| A7 | Quit | The shell comes back with its scrollback, and no image is left over it |
+| A7 | Quit with Ctrl+Shift+Q | The shell comes back with its scrollback, and no image is left over it |
 
 A3 covers upstream's mouse coordinate change (`#105`). If clicks land at an
 offset from the pointer, say where the pointer was and where the click went.
+
+### Where the IME box goes
+
+Typing Japanese works, and the text lands in the field once it is committed.
+The box that shows what is being composed does not: it appears at the top of
+the terminal window rather than beside the caret on the page.
+
+The IME belongs to the terminal, not to the page. The terminal puts the box at
+its own cursor, and the engine hides that cursor on startup
+(`\x1b[?25l`, `engine/crates/pixel-core/src/terminal.rs`), so the box lands at
+the top. Where the caret sits on the page is never something the terminal is
+told.
+
+This is how it has always worked here rather than something the v0.11.1 move
+brought in; the escape is upstream's and predates the fork. Moving the box
+would mean putting the terminal's cursor where the page's caret is, which
+nothing does today.
+
+Confirmed on 2026-09-20 in Ghostty: composing shows the box at the top, and
+committing puts the text in the field.
 
 ## B. Frame files
 
