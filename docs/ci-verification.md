@@ -100,8 +100,8 @@ on Windows takes the published build and unpacks it with
 
 ### 4. The engine binary is the one that was just built
 
-Near the end of the same step, before signing, the script compares the
-SHA-256 of three copies of `pixel.node`:
+Near the end of the same step, where signing would go, the script compares
+the SHA-256 of three copies of `pixel.node`:
 
 - `../pixel/packages/native/win32-x64/pixel.node`
 - the one `browser/` resolves (`scripts/pixel-paths.mjs native`)
@@ -143,22 +143,21 @@ The upload step takes its files from `terminal-browser/dist-release/`. The
 artifact is still named `windows-release-windows-x64`, which is what the
 `release` job's `pattern: windows-release-*` expects.
 
-## If signing secrets are present
+## Signing stays out of a verification run
 
-`WINDOWS_CODESIGN_PFX` and `WINDOWS_CODESIGN_PASSWORD` make the job pass
-`-Sign` to both scripts. Then, in the payload:
+A run started to check the job is not making anything to hand out, so it
+should not sign. It does not: the **Prepare signing certificate** step signs
+only when `WINDOWS_CODESIGN_PFX` is set, and that secret is not configured on
+this repository. The step sets `WINDOWS_SIGN=false` and the build runs without
+`-Sign`.
 
-```powershell
-Get-AuthenticodeSignature electron\pixel.exe,
-  browser\node_modules\@zenbu-labs\pixel-native-win32-x64\pixel.node |
-  Select-Object Status, Path
-```
-
-Every one must be `Valid`. `sign-windows.ps1` checks this itself after
-signing, so a bad signature fails the step rather than shipping.
+Note that the step keys off the secret, not the channel, so setting the secret
+would make every run sign, including these. Leave it unset until a run is
+meant to produce something for release.
 
 A stable release without the secret fails on purpose: `stable Windows releases
-require WINDOWS_CODESIGN_PFX`.
+require WINDOWS_CODESIGN_PFX`. Signed builds for release are the maintainer's,
+run locally with `-Sign`, or a tagged run once the secret is in place.
 
 ## Known gaps
 
@@ -167,3 +166,5 @@ require WINDOWS_CODESIGN_PFX`.
   nothing"; adding one would change how releases behave and has not been done.
 - The run's duration is unknown. pixel's native build and electron download
   are new work for this job.
+- Nothing here checks signing, because a verification run does not sign. The
+  payload's signatures are checked by `sign-windows.ps1` during a signed build.
