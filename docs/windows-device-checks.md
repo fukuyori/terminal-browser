@@ -74,7 +74,17 @@ Get-ChildItem $env:TEMP -Filter "terminal-browser-*.rgba" | Measure-Object | Sel
 ```
 
 B3 is the sweep on startup: a killed process never deletes its own files, so
-the next run clears out the ones whose owner is gone.
+the next run clears out the ones whose owner is gone. The count alone will not
+show it, because both runs keep eight; the process id in the name is what
+changes.
+
+A killed run also leaves its last frame on the terminal, since nothing gets to
+leave the alternate screen. That is the same missing cleanup, not a separate
+fault, and the next launch draws over it.
+
+Confirmed on 2026-09-20 in Ghostty: eight files while running, none after
+quitting, and after a kill the eight from the dead process were gone once the
+next run started, replaced by eight of its own.
 
 ## C. A second app in the same terminal
 
