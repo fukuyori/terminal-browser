@@ -1,13 +1,13 @@
 /* @jsx h */
 import type { EngineInterface, Register } from 'claude-code'
 import type { Browser } from './browser'
-import type { Props as SurfaceProps } from './surface.tsx'
 import { normalizeUrl } from './urls.ts'
 import {
   isBridgeState,
-  isInputMessage,
+  isFrame,
+  type Frame,
+  isSurfaceMessage,
   isLaunchReport,
-  isSizeMessage,
   takenTexts,
   type BridgeState,
 } from './bridge-protocol.ts'
@@ -19,8 +19,8 @@ const OPEN_TOOL = 'mcp__terminal-browser__open'
 const CLOSE_TOOL = 'mcp__terminal-browser__close'
 const START_URL = 'terminal-browser://start'
 const INSTALL_URL = 'https://terminal-browser.sh'
-const REQUIRED_CAPABILITIES = ['embedding']
-const POLL_MS = 250
+const REQUIRED_CAPABILITIES = ['image-embedding']
+const POLL_MS = 100
 const IDLE_POLL_MS = 600
 
 
@@ -31,6 +31,10 @@ const state = {
   pendingUrl: null as string | null,
   region: null as { cols: number; rows: number } | null,
   last: null as BridgeState | null,
+  frame: null as Frame | null,
+  imageError: null as string | null,
+  polling: false,
+  imageMounted: false,
   stopPolling: null as (() => void) | null,
   // a hack to programatically trigger agent input focus
   viewGeneration: 0,
@@ -129,6 +133,8 @@ async function openBrowser($: EngineInterface, raw: string | null): Promise<{ ok
   const alive = state.last?.alive === true
   const url = raw ? normalizeUrl(raw) : (alive && state.last?.url ? state.last.url : START_URL)
   const wasOpen = state.open
+  if (!wasOpen) state.viewGeneration += 1
+  state.imageError = null
   state.pendingUrl = url
   state.open = true
   await $.ui.open({ id: PANE, title: 'browser', focus: true, rows: 24 })
@@ -149,6 +155,9 @@ async function closeBrowser($: EngineInterface): Promise<boolean> {
 
 async function browserClosed($: EngineInterface): Promise<void> {
   state.open = false
+  state.viewGeneration += 1
+  state.frame = null
+  state.imageMounted = false
   state.pendingUrl = null
   state.region = null
   await post($, '/browser/close', {})
@@ -164,23 +173,57 @@ function startPolling($: EngineInterface): void {
 }
 
 async function poll($: EngineInterface): Promise<void> {
-  const fresh = await fetchState($)
-  if (!fresh) return
-  if (fresh.inbox > 0) await deliverAgentText($)
-  const previous = state.last
-  state.last = fresh
-  if (!state.open) return
-  const changed =
-    !previous
-    || JSON.stringify(previous.placed) !== JSON.stringify(fresh.placed)
-    || previous.title !== fresh.title
-    || previous.alive !== fresh.alive
-    || previous.error !== fresh.error
-  if (!changed) return
-  $.ui.invalidate('ui.render')
-  if (fresh.title) await $.ui.open({ id: PANE, title: fresh.title.slice(0, 40) })
+  if (state.polling) return
+  state.polling = true
+  const generation = state.viewGeneration
+  try {
+    const fresh = await fetchState($)
+    if (!fresh || generation !== state.viewGeneration) return
+    if (fresh.inbox > 0) await deliverAgentText($)
+    const previous = state.last
+    state.last = fresh
+    if (!state.open) return
+    if (!fresh.frame && state.frame) {
+      state.frame = null
+      state.imageMounted = false
+      $.ui.invalidate('ui.render')
+    }
+    if (!fresh.alive && previous?.alive) {
+      state.imageError = fresh.error ?? 'Browser stopped. Run /browser <url> to reopen.'
+      $.ui.invalidate('ui.render')
+      return
+    }
+    if (!previous || previous.error !== fresh.error || previous.alive !== fresh.alive) $.ui.invalidate('ui.render')
+    if (fresh.title && previous?.title !== fresh.title) await $.ui.open({ id: PANE, title: fresh.title.replace(/[\x00-\x1f\x7f-\x9f\u{10eeee}]/gu, ' ').slice(0, 40) })
+    if (state.imageError || !fresh.frame || fresh.frame.sequence === state.frame?.sequence || !state.region) return
+    const response = await $.http.fetch(bridgeUrl('/frame?after=' + (state.frame?.sequence ?? 0)), { headers: authHeaders() })
+    if (generation !== state.viewGeneration || !state.open) return
+    if (!response.ok) throw new Error('Browser frame request failed: HTTP ' + response.status)
+    const value = JSON.parse(response.text)
+    if (!isFrame(value.frame)) return
+    const frame = value.frame
+    if (frame.cols !== state.region.cols || frame.rows !== state.region.rows) return
+    const previousFrame = state.frame
+    state.frame = frame
+    if (!state.imageMounted || !previousFrame || previousFrame.cols !== frame.cols || previousFrame.rows !== frame.rows) {
+      $.ui.invalidate('ui.render')
+      return
+    }
+    const result = await $.ui.blit({ requestId: PANE, key: 'picture', source: frame.source, columns: frame.cols, rows: frame.rows })
+    if (generation !== state.viewGeneration || !state.open) return
+    if (result.deny) {
+      state.imageError = 'Browser image: ' + String(result.deny)
+      $.ui.log(state.imageError)
+      $.ui.invalidate('ui.render')
+    }
+  } catch (error) {
+    if (generation === state.viewGeneration && state.open) {
+      state.imageError = String(error)
+      $.ui.log('terminal-browser: ' + state.imageError)
+      $.ui.invalidate('ui.render')
+    }
+  } finally { state.polling = false }
 }
-
 
 async function deliverAgentText($: EngineInterface): Promise<void> {
   const lines = takenTexts(await post($, '/inbox/take', {}))
@@ -196,17 +239,6 @@ async function deliverAgentText($: EngineInterface): Promise<void> {
   state.viewGeneration += 1
   $.ui.invalidate('ui.render')
 }
-
-function surfaceProps(cols: number, rows: number): SurfaceProps {
-  const last = state.last
-  return {
-    placed: last?.placed ?? null,
-    cols,
-    rows,
-    title: last?.title ?? '',
-  }
-}
-
 
 export const register: Register = (on, options) => {
   const agentToolEnabled = options.agentTool === true
@@ -279,29 +311,40 @@ export const register: Register = (on, options) => {
       const { Box } = await $.ui.resolve(e)
       return <Box />
     }
-    const { Box, Client } = await $.ui.resolve(e)
-    const rows = e.props.scroll.bodyRows > 0 ? e.props.scroll.bodyRows : Math.max(8, (e.viewport?.rows ?? 30) - 8)
-    const cols = Math.max(1, e.props.bodyColumns > 0 ? e.props.bodyColumns : (e.viewport?.columns ?? 80))
+    const { Box, Client, Image, Text } = await $.ui.resolve(e)
+    const rows = Math.min(255, e.props.scroll.bodyRows > 0 ? e.props.scroll.bodyRows : Math.max(8, (e.viewport?.rows ?? 30) - 8))
+    const cols = Math.min(255, Math.max(1, e.props.bodyColumns > 0 ? e.props.bodyColumns : (e.viewport?.columns ?? 80)))
+    const error = state.imageError ?? state.last?.error
+    if (error) return <Text>{error.replace(/[\x00-\x1f\x7f-\x9f\u{10eeee}]/gu, ' ').slice(0, 2000)}</Text>
+    const frame = state.frame?.cols === cols && state.frame.rows === rows ? state.frame : null
+    state.imageMounted = frame !== null
     return (
-      <Box flexDirection="column">
-        <Client key={viewKey()} module="./surface.tsx" width={cols} height={rows} props={surfaceProps(cols, rows)} />
+      <Box flexDirection="column" position="relative" width={cols} height={rows}>
+        {frame ? <Image key="picture" source={frame.source} columns={cols} rows={rows} alt="Browser image unavailable" /> : <Text>Loading browser…</Text>}
+        <Box position="absolute" top={0} left={0}>
+          <Client key={viewKey()} module="./surface.tsx" width={cols} height={rows} props={{}} />
+        </Box>
       </Box>
     )
   })
 
   on('ui.message', async ($, e, next) => {
-    if (e.requestId !== PANE || state.port === null) return next(e)
-    if (isSizeMessage(e.data)) {
+    if (e.requestId !== PANE || state.port === null || !state.open || e.element !== viewKey()) return next(e)
+    if (isSurfaceMessage(e.data)) {
+      const resized = state.region?.cols !== e.data.cols || state.region.rows !== e.data.rows
+      if (resized) {
+        state.frame = null
+        state.imageMounted = false
+      }
       state.region = { cols: e.data.cols, rows: e.data.rows }
       if (state.pendingUrl) {
         const url = state.pendingUrl
         state.pendingUrl = null
         await post($, '/open', { url, ...state.region })
-      } else {
+      } else if (resized) {
         await post($, '/size', state.region)
       }
-    } else if (isInputMessage(e.data)) {
-      await post($, '/input', { events: e.data.events })
+      if (e.data.events.length) await post($, '/input', { events: e.data.events })
     }
     return next(e)
   })

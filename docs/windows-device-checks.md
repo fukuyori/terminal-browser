@@ -180,21 +180,57 @@ passed, and ending the owner left no process and no pipe behind.
 | --- | --- | --- |
 | D1 | `node cli\dist\main.js open --ssh <user@host> <url>` | The page loads through the remote host |
 | D2 | A host alias from your ssh config | It is accepted as the target |
-| D3 | Paste an image into a page: copy one in another app, or copy a `.png` file, then paste into a file input or an editor | The picture arrives in the page |
+| D3 | Paste a picture into a page, both ways: see [how to](#pasting-a-picture-into-a-page) | The picture arrives in the page |
 | D4 | `node cli\dist\main.js action` against an open browser | It lists targets and can open a tab |
+
+### Pasting a picture into a page
+
+Two things can be on the clipboard, and the engine takes both:
+
+| On the clipboard | What the engine makes of it |
+| --- | --- |
+| A picture, copied from an image editor or a snip | pixels, saved as a png |
+| A `.png` file, copied in Explorer | that file, by its path |
+
+Either way `web/input.ts` hands it to the page with `contents().paste()`.
+
+Open a page that takes a picture. https://imgbb.com and
+https://postimages.org both accept a paste, and so does any page with a
+rich-text editor. Then:
+
+1. Copy a picture. Win+Shift+S takes a snip straight to the clipboard.
+2. Click into the page where a picture would go.
+3. Press Ctrl+V.
+
+**Pass:** the picture appears in the page, the right way up and the right
+size.
+
+Then do it again with a file: copy a `.png` in Explorer with Ctrl+C, and paste
+into the same place.
+
+The engine's half of this is covered by tests in `clipboard_image.rs`, which
+put a picture and a file on the real clipboard and read them back. They are
+skipped unless `PIXEL_TEST_CLIPBOARD=1`, because writing the clipboard takes
+over what the person had on it; they put text back afterwards, and cannot put
+back a picture.
+
+Done on 2026-09-20 in Ghostty, both ways, on imgbb: a snip taken with
+Win+Shift+S pasted into the page, and so did a `.png` copied in Explorer. The
+engine tests passed the same day. A page that takes an upload takes a paste
+too, which is not obvious from looking at one.
 
 ### Where group D stands
 
-Checked on 2026-09-20 at `07e8470`, with Pixel `7dd8282`, using the
-development CLI and real Electron. These were controlled integration checks
-with an embedded test transport, not a person watching Ghostty or WezTerm.
+The initial checks on 2026-09-20 at `07e8470`, with Pixel `7dd8282`, used the
+development CLI and real Electron with an embedded test transport. Later
+manual checks are recorded separately below.
 
 | # | Result |
 | --- | --- |
-| D1 | SSH, remote page loading and frame generation confirmed; terminal appearance not checked |
-| D2 | The same path works with a host alias in a temporary SSH config passed with `-F`; terminal appearance not checked |
-| D3 | Not checked. The row asked for the wrong direction; see below |
-| D4 | With the local timeout change, the first call recovers automatically in 20.3 seconds and subsequent operations work. Terminal appearance and the cause of the initial stall remain unchecked |
+| D1 | SSH, remote page loading and frame generation confirmed; the user also confirmed example.com displayed with the direct SSH target |
+| D2 | The host alias in a temporary SSH config passed with `-F` works; the user also confirmed example.com displayed with that alias |
+| D3 | Both ways reach the page: a snip and a copied `.png` each pasted into imgbb |
+| D4 | Passed in Ghostty: first snapshot in 471.55 ms, visible link navigation, tab creation, Japanese input, click, eval and manual input after `action done`. Controlled integration also passed |
 
 D1 and D2 used a temporary HTTP server bound only to the SSH server's
 loopback address. Its URL was unreachable locally without the tunnel. Both
@@ -204,6 +240,12 @@ page's background colour. The temporary server stopped after the checks,
 and both browser launches and SSH tunnels were closed. The alias config
 lives under the ignored diagnostic directory; the user's SSH config was
 not changed.
+
+On 2026-09-20, the user confirmed that `https://example.com` displayed in
+both manual runs: D1 with `--ssh fuk@192.168.12.12`, and D2 with
+`--ssh "ssh -F D:/home/source/rust/terminal-browser/tools/stall-diagnostics/ssh-zqp7u3/ssh_config tb-d2-probe"`.
+This completes the display check for D1 and D2. Link interaction and return
+to the terminal after closing were not included in that report.
 
 This test process inherited an `SSH_AUTH_SOCK` pointing to a missing WezTerm
 agent socket. Removing that variable only from the test subprocesses let
@@ -218,7 +260,7 @@ out of a page, and the page's context menu has no such item either, so the row
 as first written asked for something that does not exist. The row above now
 asks for the direction the code has.
 
-For D4, a fresh agent-browser 0.33.0 session did not return from the first
+For D4, the original fresh agent-browser 0.33.0 session did not return from the first
 `action -- tab list --json` within 45 seconds. A second fresh session also
 stalled and was stopped after 15 seconds. Retrying in that same session
 returned in 425 ms; snapshot, Japanese text entry, clicking, evaluating the
@@ -236,9 +278,40 @@ session's first `action -- tab list --json` returned successfully after
 20,299 ms, without the test driver retrying the CLI command. Snapshot,
 Japanese text entry, clicking, evaluating the result and `action done`
 then passed in 205 to 270 ms each. The test driver shut down its browser
-and stopped its agent daemon after the check. This confirms recovery in
-the controlled integration setup; it does not identify the initial stall's
-cause or replace a visual check in a terminal.
+and stopped its agent daemon after the check. That confirmed recovery, before
+the cause below was isolated.
+
+The Windows stall was waiting for output pipes to close. In a direct check,
+agent-browser wrote successful JSON after 258 ms and exited with code 0 after
+261 ms, but its detached daemon retained inherited output handles. The pipes
+closed only when that daemon was stopped. Either stdout or stderr alone could
+hold the call open. A minimal Rust reproduction using the same daemon spawn
+options showed the same delay; clearing inheritance on the original standard
+handles removed it. This was not a command still working for twenty seconds.
+
+`runAgent` now captures stdout and stderr in separate temporary files on
+Windows. It waits for the command process, reads its output and removes the
+files, without waiting for the daemon to close inherited pipe handles. Other
+platforms retain pipe capture. The existing timeout still bounds a command
+that really does not exit.
+
+With this change on top of `4a6daeb`, the real agent-browser 0.33.0 in a fresh
+session completed the first `action --tab 2 -- tab list --json` in 507 ms,
+without a timeout or a manual retry. Snapshot, Japanese input, clicking,
+evaluating the result and `action done` passed in 190 to 241 ms each. This
+used real Electron with an embedded test transport; terminal appearance
+was not checked. The test browser and agent daemon were stopped afterward.
+
+The user then completed the manual D4 check in Ghostty on 2026-09-20.
+Browser `11440-1` was opened with `open https://example.com --no-merge`;
+commands were run from PowerShell in another Ghostty tab with an explicit
+`--browser` selector. The first snapshot returned Example Domain in
+471.55 ms. Clicking the quoted selector `'@e2'` visibly navigated to the
+IANA page. `action -- open` created tab 2 with the local input test page.
+Filling its input with `日本語 D4 確認` and clicking its button both appeared
+on screen. The user subsequently changed the text and pressed the button;
+`eval` returned the matching `今日の天気はどうですか`. After `action done`,
+the user confirmed that clicking the input and typing manually worked.
 
 `agent-timeout.test.js` now calls the code it is about. Five of its tests
 drive `agentTabs` with a stand-in for the agent, so the reconnect, the order
@@ -247,29 +320,32 @@ the product's own. Writing that sequence separately had hidden a fault: the
 first version of the message carried the value of `--session` in it, which
 only showed once the real function was the one being asked.
 
-Three more drive `runAgent` itself, through a child, because `runAgent` blocks
+The timeout tests drive `runAgent` itself through a child, because it blocks
 on `spawnSync` and a deadline inside the test process could never fire while it
 did. The child has its own deadline, so a `runAgent` that stopped passing one
 to `spawnSync` fails the test instead of hanging the suite. Taking the timeout
 out of `action.ts` was tried: both tests fail in about 20 seconds with
 "it is not giving spawnSync a deadline", and the suite finishes.
 
+A Windows regression test lets a detached child retain stdout and stderr
+after its caller exits. It checks successful return while that child is still
+alive, Japanese output on both streams, and removal of the capture files.
+Restoring pipe capture makes this test fail with a timeout. Capture cleanup
+is also checked after a timeout and a failure to start the command.
+
 `TERMINAL_BROWSER_AGENT_TIMEOUT_MS` shortens the deadline, which is how those
 tests stall for a second and a half rather than twenty. It takes a whole number
 of milliseconds and ignores anything else, because `spawnSync` refuses a
 fractional one.
 
-### What D4 still needs
+### D4 validation limits
 
-The waiting is dealt with; the stall is not.
-
-- **Why the first call stalls.** Nothing here explains it. The recovery makes
-  it cost a deadline rather than the rest of the session, which is not the
-  same as fixing it.
-- **Whether it is a Windows thing.** Not tried anywhere else.
-- **A person watching a terminal.** Everything above was a controlled check
-  with a stand-in or a driver. What the pane looks like while an agent works
-  in it has not been seen.
+- **Other platforms.** The cause and correction above were checked on Windows;
+  equivalent first-launch checks have not been run elsewhere.
+- **Automatic splitting in Ghostty on Windows.** The attempted `--split right`
+  launch failed with `could not work out which ghostty pane you are in`.
+  The current Ghostty adapter supports automatic splitting only on macOS.
+  The manual D4 check used separate Ghostty tabs instead.
 
 Local evidence, kept outside Git:
 
@@ -280,12 +356,19 @@ Local evidence, kept outside Git:
   retry, including each command's output and timing.
 - `tools/stall-diagnostics/d4-DJa1d2/`: automatic recovery with the real
   agent-browser and the local 20-second timeout change.
+- `tools/stall-diagnostics/d4-diagnosis-vkJdlY/`: command exit and pipe-close
+  timings, including direct agent-browser checks with file capture.
+- `tools/stall-diagnostics/d4-cause.txt`: diagnosis and minimal Rust evidence.
+- `tools/stall-diagnostics/output-regression-mutation.log`: the regression
+  test failing when pipe capture is restored.
+- `tools/stall-diagnostics/d4-QgO8S2/`: the 507 ms first call and subsequent
+  successful operations with the Windows file capture change.
 
 ## E. The Claude Code plugin
 
 This is the bridge, and it is separate from D4. The bridge starts detached and
-then attaches to the console that called it, which is the part that has never
-been seen working.
+then attaches to the console that called it. That startup path has been
+verified; the new Image rendering path still needs production device checks.
 
 | # | Do this | Expect |
 | --- | --- | --- |
@@ -298,7 +381,7 @@ been seen working.
 ```powershell
 Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
   Where-Object { $_.CommandLine -like "*claude-bridge*" } |
-  Select-Object ProcessId, CommandLine
+  Select-Object ProcessId, ParentProcessId
 ```
 
 E5 does not empty that. Closing hides the page, and the bridge waits for the
@@ -308,7 +391,8 @@ long as Claude Code does.
 
 ### Where group E stands
 
-Done on 2026-09-20 with Claude Code 2.1.278 on Windows 11:
+Initial result on 2026-09-20 with Claude Code 2.1.278 on Windows 11,
+before the Image migration:
 
 | # | Result |
 | --- | --- |
@@ -324,6 +408,142 @@ The drawing is a disagreement between the plugin's method and this build of
 Claude Code. See
 [the diagnosis](open-issue-plugin-placeholder-refused.md). Group E stays open
 until a page is actually drawn and E2 to E4 can be done.
+
+A separate Image API probe passed in Ghostty on 2026-09-20: direct base64
+PNG and RGBA displayed, and an overlaid input Client received pointer down/up
+at `(5, 1)` and the `a` key while the image stayed visible. Escape followed
+by `/imgprobe close` closed the pane. WezTerm showed alternative text in the
+PNG check. A subsequent `$.ui.blit` probe visibly animated a white block while
+receiving clicks and the `a` key. It stopped at 1,257 accepted updates with
+zero denials, reopened successfully, and stopped again at 198 accepted updates
+with zero denials. These counts are API acceptances, not a frame-rate
+measurement. This is an isolated plugin check, not a pass for browser E1/E2;
+browser frame transport, bridge input forwarding and clipboard behavior remain
+to be checked. Details are in the diagnosis linked above.
+
+The ignored probe now has a `/browserprobe` command for a real 512 by 512
+browser, with an Image and an overlaid Client. A controlled adapter check
+received the browser's pixels, measured movement of its animated white block,
+delivered mouse/key/Japanese paste events to the page, and verified process
+exit after close. The detached launch and plugin type check passed. These
+checks did not run through Claude Code. The user subsequently confirmed the
+real page displayed in Claude Code on Ghostty, accepted `abc` in its field,
+displayed it after clicking Apply, and continued animating. Multi-character
+IME commits failed; only individually confirmed characters entered. The probe
+mapper discarded multi-character text and has been corrected. A synthetic
+`日本語テスト` event passed through the corrected mapper to the real page;
+the user then passed the physical IME retest. The Client log shows `日`
+followed by `本語入力テスト`; both are now forwarded. Selecting the two
+Japanese lines on the probe page and pasting into Notepad preserved their
+text and line break. Close/reopen restored the page and animation, and
+`再開テスト` entered correctly after reopening. The second close also passed.
+Image update counters at close were 1198 accepted / 0 denied and 493 accepted
+/ 0 denied; these are API counts, not frame rates. Both browser exits were 0,
+and neither diagnostic host nor browser process remained at the subsequent
+check. Evidence is in `tools/stall-diagnostics/image-probe/manual-close-check.json`
+and the linked diagnosis.
+
+The diagnostic results do not mark production E1-E5 as passed. The diagnostic adapter stops its host
+and browser on close; production E5 deliberately hides and reuses them.
+
+The production `/browser` is now migrated in the working tree. Controlled
+checks against its real bridge/browser passed at 48x24, 90x40, 32x16 and
+150x35 cells, including input after resize and two hide/reopen cycles with
+page contents retained. PNG is used normally; oversized images are reduced
+to RGBA within the Image API limit. Claude Code loaded the production plugin
+and fetched frames; the automation terminal was WezTerm, where Image remains
+refused. The subsequent production Ghostty check displayed Example Domain,
+followed its link by mouse, and opened the D4 input page. Actual IME input
+failed: the user reported a missing first character and duplicated remaining
+text; the screenshot shows `語入力テスト語入力テスト`. Input events were not
+logged in that run, so the failing layer is still undetermined. Production
+E2 is incomplete; clipboard, close/reopen and visual resize checks remain.
+Two subsequent physical IME attempts after restarting with input logging
+enabled produced the correct DOM value. The bridge received each text part
+once, and page events confirmed the second insertion without duplication.
+No input fix was applied between runs; the earlier failure remains unresolved.
+Directly replacing selected text with `再入力テスト` also passed on the third
+attempt, confirmed by the user, bridge log and DOM insertion events.
+The Apply button displayed that text, but E3 failed: selecting it and pasting
+into Notepad produced `慌eQ娚ﾆ0ｹ0ﾈ0`. The same corruption was reproduced through
+the production bridge's `clip.exe` writer. It now uses explicit UTF-8 input
+decoding and PowerShell `Set-Clipboard`. Real clipboard regression checks pass
+for Japanese, multiline text with a trailing newline, ASCII, emoji, shell
+metacharacters and empty text; CLI 28 passed / 0 skipped with the clipboard
+test enabled. The production Notepad retest after restart is still pending.
+On restart, input and Apply passed, but drag selection failed. At inspection
+the browser was gone and the bridge reported `alive:false`, with no error;
+mouse events were still being received. The plugin retained a stale image.
+That display defect is fixed, and all browser exits are now logged/reported.
+Plugin regressions and a controlled real-browser termination passed; CLI 29
+passed / 1 clipboard test skipped. The original exit reason is unknown, and
+the manual clipboard retest was incomplete at that point.
+After the next restart, the user confirmed IME input, Apply, drag selection,
+and pasting `再入力テスト` into Notepad without corruption. E3 now passes its
+production manual check. The bridge logged the final six-character selection,
+and browser `30408-1` remained live when inspected. E4 also passed: in the
+production `/browser`, the user selected `日本語のコピー` and `2行目のテキスト`
+together on `image-probe/browser-page.html` and confirmed the Notepad paste
+preserved Japanese text and the line break. E5's manual close/reopen check
+also passed: `/browser close` returned to the Claude input, `/browser`
+restored the animated page, and `再開テスト` entered correctly after reopening.
+The browser registry still showed `30408-1`, confirming reuse of the same
+browser. Shrinking the window preserved animation and the Apply button worked.
+Enlarging again stalled at `Loading browser…`; the browser remained alive but
+the bridge kept producing frames at the smaller 49x35-cell size. A controlled
+Client regression reproduced size notifications being overwritten by input
+posts within one frame. Size and input are now posted together, with size
+forwarded first. CLI 30 passed / 1 clipboard test skipped; plugin type checking
+passed. The physical resize retest then passed: animation continued at the
+original size, after shrinking and after enlarging again. The bridge logged
+89x53 -> 49x35 -> 89x53 cells (`production-resize-retest.log`). After enlargement,
+the user entered `サイズ変更テスト` through the IME, clicked Apply, and confirmed
+the same text appeared below the button. The resize and subsequent input checks
+passed; browser `31764-1` was still live at inspection. The earlier IME duplication
+and unexplained browser exit remain unresolved despite successful retries.
+This requires the local Pixel `PIXEL_EMBED_FRAMES` change, not yet represented
+by `pixel.commit`. Details and evidence are in the diagnosis linked above.
+
+Final pane close and Claude session exit passed. The tracked bridge, attached
+CLI and browser were all gone by 2026-09-20T13:22:06Z; evidence is in
+`tools/stall-diagnostics/production-session-exit.json`.
+
+The IME failure was then reproduced in a controlled real-browser check:
+two multi-character commits (`日本`, `語入力テスト`) became two copies of the
+second string. Mapping commits to clipboard pastes raced clipboard replacement.
+Commits now use Pixel's existing text-insertion key path. A repeated check also
+exposed unawaited insertions replacing each other; Pixel now dispatches keys
+in order after pending focus/insertion completes. Four chunk patterns repeated
+three times passed, as did input at four sizes and after two reopen cycles.
+All 18 recorded commits left the clipboard unchanged. Evidence:
+`tools/stall-diagnostics/e-production-run-opztL3/ime-chunks.json`.
+CLI 31 passed / 1 clipboard test skipped; two Pixel input tests, the Pixel build
+and plugin type checking passed. The new physical IME retest passed: the user
+entered `日本語入力テスト` and replaced it with `再入力テスト` after Ctrl+A,
+without missing or duplicate text. The bridge logged the corrected
+`key:unknown` text-insertion path (`production-ime-final-manual.log`).
+The previous unexpected browser exit remains unexplained. Pixel's additional
+input-ordering change is local and also absent from `pixel.commit`.
+
+The final IME-verification session also closed cleanly. At
+2026-09-20T13:36:06Z, bridge 8168, attached CLI 30352, browser 36480 and
+its console process 37852 were all gone. The bridge logged intentional
+shutdown (`stopping:true`) at 13:36:04Z. Evidence:
+`tools/stall-diagnostics/production-final-session-exit.json`.
+
+Current manual results after the fixes:
+
+| Check | Result |
+| --- | --- |
+| E1 | Passed: real pages draw in Claude Code on Ghostty |
+| E2 | Passed on retest: click, IME entry and selected-text replacement; split commits also passed controlled regressions |
+| E3 | Passed after encoding fix: selected Japanese text pasted correctly into Notepad |
+| E4 | Passed: Japanese text and line break preserved in Notepad |
+| E5 | Passed: hide/reopen reused the browser; session exit left no tracked process |
+| Resize | Passed after notification fix: shrink/enlarge, animation, IME and clicking after enlargement |
+
+The earlier unexplained browser exit remains an open reliability issue;
+these manual passes do not identify its cause. F and G remain separate checks.
 
 ## F. The built package and the installer
 

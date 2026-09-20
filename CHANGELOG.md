@@ -6,6 +6,31 @@ Notable changes to the Windows fork of terminal-browser are documented here.
 
 ## Unreleased
 
+- Send multi-character Claude IME commits through text insertion instead of
+  shared clipboard pastes. Requires the matching Pixel key-ordering change.
+  Repeated split-commit checks and physical IME entry/replacement passed
+  against the real browser.
+
+- Combine Claude Client size and input notifications so pointer events cannot
+  replace a pending resize notification in the same frame. Regression checks
+  and a Ghostty shrink/enlarge retest passed, including IME input and clicking
+  after enlargement.
+
+- Remove stale Claude Code browser images after the frame connection or browser
+  is lost, show browser termination, and log process exits for diagnosis.
+
+- Fix Japanese text corruption when copying from the Claude Code browser pane
+  on Windows. Read UTF-8 explicitly before setting the clipboard, replacing
+  `clip.exe`'s content-dependent encoding detection. Real clipboard regression
+  checks include Japanese, line breaks, emoji and empty text.
+
+- Move the Claude Code plugin to `Image` / `ui.blit`, with a separate Client
+  for input. Frames travel through the Pixel host connection and an authenticated
+  local bridge. Large images use a reduced RGBA image to stay within the inline
+  API limit; IME commits preserve multiple characters. Resize and hide/reopen
+  checks pass against the real browser; production Ghostty device checks remain.
+  Requires Pixel's matching `PIXEL_EMBED_FRAMES` change in the adjacent checkout.
+
 - Keep the Windows Claude Code bridge alive after its launcher exits. The bridge
   attaches to the caller's console before reporting readiness and reports a startup
   error if attachment fails. This requires the matching Pixel native build.

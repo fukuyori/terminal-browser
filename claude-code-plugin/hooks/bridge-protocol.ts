@@ -1,10 +1,13 @@
 // we cannot use libraries inside the claude code sandbox, hence this gross code
 
 
-export type Placed = { imageId: number; cols: number; rows: number }
+import type { ImageSource } from 'claude-code'
+
+export type FrameInfo = { sequence: number; cols: number; rows: number }
+export type Frame = FrameInfo & { source: ImageSource }
 
 export type BridgeState = {
-  placed: Placed | null
+  frame: FrameInfo | null
   title: string
   url: string | null
   alive: boolean
@@ -16,22 +19,24 @@ export type LaunchReport =
   | { port: number; token: string }
   | { error: string; code: 'tty' | 'start' }
 
-export type SizeMessage = { type: 'size'; cols: number; rows: number }
-export type InputMessage = { type: 'input'; events: unknown[] }
+export type SurfaceMessage = { type: 'surface'; cols: number; rows: number; events: unknown[] }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
 export const isBridgeState = (value: unknown): value is BridgeState =>
-  isRecord(value) && typeof value.alive === 'boolean' && 'placed' in value
+  isRecord(value) && typeof value.alive === 'boolean' && 'frame' in value
+
+export const isFrame = (value: unknown): value is Frame => {
+  if (!isRecord(value) || !Number.isSafeInteger(value.sequence) || !Number.isInteger(value.cols) || !Number.isInteger(value.rows) || !isRecord(value.source)) return false
+  const source = value.source
+  return typeof source.png === 'string' || (typeof source.rgba === 'string' && Number.isInteger(source.width) && Number.isInteger(source.height))
+}
 
 export const isLaunchReport = (value: unknown): value is LaunchReport =>
   isRecord(value) && (typeof value.port === 'number' || typeof value.error === 'string')
 
-export const isSizeMessage = (data: unknown): data is SizeMessage =>
-  isRecord(data) && data.type === 'size' && Number.isInteger(data.cols) && Number.isInteger(data.rows)
-
-export const isInputMessage = (data: unknown): data is InputMessage =>
-  isRecord(data) && data.type === 'input' && Array.isArray(data.events)
+export const isSurfaceMessage = (data: unknown): data is SurfaceMessage =>
+  isRecord(data) && data.type === 'surface' && Number.isInteger(data.cols) && Number.isInteger(data.rows) && Array.isArray(data.events)
 
 export const takenTexts = (value: unknown): string[] =>
   isRecord(value) && Array.isArray(value.texts) ? value.texts.filter((t): t is string => typeof t === 'string') : []

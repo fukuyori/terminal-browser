@@ -93,7 +93,7 @@ function serve(tty, socket) {
   const token = "test-token";
   const child = spawn(
     process.execPath,
-    [MAIN, "claude-bridge", "serve", "--tty", tty, "--transport", "file", "--socket", socket, "--cell", "", "--token", token],
+    [MAIN, "claude-bridge", "serve", "--tty", tty, "--socket", socket, "--cell", "", "--token", token],
     { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
   );
   let stderr = "";
@@ -136,7 +136,8 @@ function joinAsPixel(socket) {
         at = buffer.indexOf("\n");
       }
     });
-    client.once("connect", () =>
+    client.once("connect", () => {
+      client.write(JSON.stringify({ type: "join", pane: "p", name: "test" }) + "\n");
       resolve({
         lines,
         /** Writes one byte at a time, so multi-byte characters split. */
@@ -156,8 +157,8 @@ function joinAsPixel(socket) {
           });
         },
         end: () => client.end(),
-      }),
-    );
+      });
+    });
   });
 }
 
@@ -177,7 +178,8 @@ test("the bridge serves state over http and takes a pixel connection", async () 
     await settle();
     const init = pixel.lines.find((line) => line.type === "init");
     assert.ok(init, `no init in ${JSON.stringify(pixel.lines)}`);
-    assert.equal(init.transport, "file");
+    assert.equal(init.width, init.cols * init.cell[0]);
+    assert.equal(init.height, init.rows * init.cell[1]);
     assert.ok(init.cols > 0 && init.rows > 0);
     pixel.end();
 
@@ -247,12 +249,13 @@ test("serve without its endpoint says so and stops", () => {
   assert.match(result.stderr, /needs --tty and --socket/);
 });
 
-test("each platform's clipboard command gets the encoding it reads", () => {
+test("clipboard text is passed as stdin, separate from the command", () => {
   const text = "日本語テスト\n2行目\tタブ";
   const windows = clipboardWriter(text, "win32");
-  assert.equal(windows.command, "clip.exe");
-  assert.equal(windows.bytes.toString("utf16le"), text);
-  assert.ok(!windows.bytes.subarray(0, 2).equals(Buffer.from([0xff, 0xfe])), "no byte order mark");
+  assert.equal(windows.command, "powershell.exe");
+  assert.equal(windows.bytes.toString("utf8"), text);
+  assert.deepEqual(windows.args, clipboardWriter('"; $(exit 1) `test`', "win32").args);
+  assert.ok(!windows.args.some(arg => arg.includes(text)));
 
   const mac = clipboardWriter(text, "darwin");
   assert.equal(mac.command, "pbcopy");
@@ -269,7 +272,7 @@ function clipboardFile(direction, file) {
   const script =
     direction === "save"
       ? `$t = Get-Clipboard -Raw; if ($null -eq $t) { $t = '' }; [IO.File]::WriteAllText('${file}', $t)`
-      : `$t = [IO.File]::ReadAllText('${file}'); Set-Clipboard -Value $t`;
+      : `$t = [IO.File]::ReadAllText('${file}'); if ($t.Length) { Set-Clipboard -Value $t } else { Set-Clipboard }`;
   const run = spawnSync("powershell", ["-NoProfile", "-Command", script], { encoding: "utf8" });
   assert.equal(run.status, 0, `clipboard ${direction} failed: ${run.stderr}`);
 }
@@ -282,17 +285,23 @@ test("a copy request reaches the clipboard whole", clipboardAllowed, async () =>
 
   const socket = endpoint(`cc-browser-clip-${process.pid}`);
   const bridge = serve("test-tty", socket);
-  const text = "日本語テスト\n2行目 with spaces\tタブ";
   try {
     await bridge.port;
     const pixel = await joinAsPixel(socket);
-    await pixel.sendByteByByte({ type: "clipboard", text });
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    const seen = path.join(scratch, "after.txt");
-    clipboardFile("save", seen);
-    assert.equal(fs.readFileSync(seen, "utf8").replace(/\r\n/g, "\n").replace(/\n+$/, ""), text);
-    pixel.end();
+    try {
+      for (const text of ["再入力テスト", "日本語テスト\n2行目 with spaces\tタブ\n", "abc", "😀", '"; $(exit 1) `test`', ""]) {
+        await pixel.sendByteByByte({ type: "clipboard", text });
+        const seen = path.join(scratch, "after.txt");
+        const deadline = Date.now() + 5000;
+        let actual;
+        do {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          clipboardFile("save", seen);
+          actual = fs.readFileSync(seen, "utf8");
+        } while (actual !== text && Date.now() < deadline);
+        assert.equal(actual, text);
+      }
+    } finally { pixel.end(); }
   } finally {
     bridge.child.kill();
     clipboardFile("restore", kept);
