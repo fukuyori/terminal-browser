@@ -20,8 +20,10 @@ try {
   ensureDataDir();
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 } catch {}
-app.commandLine.appendSwitch("enable-logging", "file");
-app.commandLine.appendSwitch("log-file", path.join(LOGS_DIR, "chromium.log"));
+if (process.platform !== "win32") {
+  app.commandLine.appendSwitch("enable-logging", "file");
+  app.commandLine.appendSwitch("log-file", path.join(LOGS_DIR, "chromium.log"));
+}
 app.setName("terminal-browser");
 claimProfile();
 registerScheme();

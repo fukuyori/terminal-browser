@@ -82,6 +82,11 @@ A killed run also leaves its last frame on the terminal, since nothing gets to
 leave the alternate screen. That is the same missing cleanup, not a separate
 fault, and the next launch draws over it.
 
+It does leave that shell unusable, though, so kill a run only where the point
+is to see what a kill leaves behind. Everywhere else, quit with Ctrl+Shift+Q,
+which puts the terminal back. A shell already stuck that way is easiest to
+replace with a new tab.
+
 Confirmed on 2026-09-20 in Ghostty: eight files while running, none after
 quitting, and after a kill the eight from the dead process were gone once the
 next run started, replaced by eight of its own.
@@ -95,17 +100,79 @@ Run the first one, note the pane, then from another shell:
 
 ```powershell
 $env:PIXEL_TTY = "CONIN$#<the surface or pane id of the first>"
+$env:TERMINAL_BROWSER_NO_MERGE = "1"
 node cli\dist\main.js https://example.org
 ```
+
+The second-launch stall found here was an unsupported shared-memory frame
+submission on Windows. It is fixed in the local Pixel dependency; see
+[the diagnosis and verification](open-issue-second-launch-stalls.md).
+Remove the two environment variables from the second shell after this group.
+
+Ask pane 1 what it is called, for `PIXEL_TTY`:
+
+```powershell
+node -e "const{createRequire}=require('module');const path=require('path');const req=createRequire(path.join(process.cwd(),'browser','index.js'));console.log(req('@zenbu-labs/pixel/terminal').windowsConsoleId())"
+```
+
+**The second app draws into pane 1, not into its own tab.** Its own tab shows
+nothing but the running command, so watch pane 1 and type there.
 
 | # | Do this | Expect |
 | --- | --- | --- |
 | C1 | Start the second app | It does not fail with `host did not accept the frame stream` |
-| C2 | Watch the first pane | It shows the second app |
-| C3 | Type and click | The input reaches the second app |
-| C4 | Resize the window | The second app reflows |
-| C5 | Quit the second app | The first app's own page comes back |
-| C6 | Quit the first app while the second is still up | The second one notices and does not hang |
+| C2 | Watch pane 1 | A second tab appears, showing the second app |
+| C3 | Type and click in pane 1, and press Alt+1 and Alt+2 | The input reaches the second app, and the tabs switch |
+| C4 | Resize the window | Both tabs reflow |
+| C5 | Press Ctrl+C in the second app's own tab | Pane 1 goes back to one tab and its own page |
+| C6 | With both up, end the first app from a third tab | The second one ends too, leaving no process and no pipe |
+
+C5 is Ctrl+C rather than the browser's own quit: the browser's keys go to
+pane 1, where the second app is only a guest.
+
+C6 needs the first app ended from outside, because quitting it from pane 1
+closes the terminal along with it in Ghostty:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+  Where-Object { $_.CommandLine -like "*example.com*" } | Select-Object ProcessId
+Stop-Process -Id <that id>
+```
+
+That leaves pane 1 the way any killed run does, with mouse reporting still on,
+so moving the mouse prints the reports as text. It is the cleanup that never
+happened, not a fault of its own. Close the tab, or put the terminal back:
+
+```powershell
+[Console]::Write("`e[?1003l`e[?1006l`e[?1016l`e[?1004l`e[?2004l`e[?25h`e[?1049l")
+```
+
+Then nothing should be left:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+  Where-Object { $_.CommandLine -like "*cli\dist\main.js*" }
+Get-Process pixel -ErrorAction SilentlyContinue
+[System.IO.Directory]::GetFiles("\\.\pipe\") | Where-Object { $_ -like "*terminal-browser*" -or $_ -like "*pixel*" }
+```
+
+### Two daemons, one drawing
+
+While both apps run there are two daemons, one per tab:
+
+```
+\\.\pipe\terminal-browser-<scope>-daemon-<pane 1's surface>
+\\.\pipe\terminal-browser-<scope>-daemon-<pane 2's surface>
+```
+
+`PIXEL_TTY` tells the engine where to draw; the daemon's name comes from the
+environment, so the second tab starts one of its own. The daemon carries
+control between the CLI and the browser and takes no part in drawing, so this
+costs nothing. It does show that two panes alive at once get different scopes,
+which is what group G asks for.
+
+Done on 2026-09-20 in Ghostty with the frame-path fix in place: all six
+passed, and ending the owner left no process and no pipe behind.
 
 ## D. SSH, agents and the clipboard
 
@@ -128,7 +195,7 @@ been seen working.
 | E2 | Click and type | The input reaches the page |
 | E3 | Select text on the page | It reaches the Windows clipboard |
 | E4 | Copy Japanese and something with line breaks | Both survive, with the line breaks intact |
-| E5 | Close it | The terminal comes back, and no bridge process is left |
+| E5 | Close it | The page is hidden; the bridge stays for the next open |
 
 ```powershell
 Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
@@ -136,8 +203,29 @@ Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
   Select-Object ProcessId, CommandLine
 ```
 
-E5 should leave that empty. A bridge with nothing talking to it also exits on
-its own after a minute.
+E5 does not empty that. Closing hides the page, and the bridge waits for the
+next one. It ends by itself after a minute with nothing talking to it, but
+Claude Code keeps polling while it is up, so in practice the bridge lasts as
+long as Claude Code does.
+
+### Where group E stands
+
+Done on 2026-09-20 with Claude Code 2.1.278 on Windows 11:
+
+| # | Result |
+| --- | --- |
+| E1 | Not reached. This Claude Code refuses the character the plugin draws with |
+| E2, E3, E4 | Not tried; they need E1 |
+| E5 | As implemented, once the expectation above was corrected |
+
+The bridge itself works: it started, attached to the caller's console, and
+answered `GET /state` throughout. That is the part this migration changed,
+and it is confirmed separately from the drawing.
+
+The drawing is a disagreement between the plugin's method and this build of
+Claude Code. See
+[the diagnosis](open-issue-plugin-placeholder-refused.md). Group E stays open
+until a page is actually drawn and E2 to E4 can be done.
 
 ## F. The built package and the installer
 
