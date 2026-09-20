@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { AGENT_SOCKETS_DIR } from "pixel-store";
@@ -88,17 +89,33 @@ export type AgentRun = { status: number; stdout: string; timedOut: boolean; ms: 
  */
 export function runAgent(binary: string, args: string[]): AgentRun {
   const started = Date.now();
-  const result = spawnSync(binary, args, {
-    encoding: "utf8",
-    env: childEnv(),
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: agentTimeout(),
-  });
-  const ms = Date.now() - started;
-  const timedOut = (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
-  if (result.error && !timedOut) throw result.error;
-  if (result.stderr) process.stderr.write(result.stderr);
-  return { status: timedOut ? 1 : result.status ?? 1, stdout: result.stdout ?? "", timedOut, ms };
+  const directory = process.platform === "win32"
+    ? fs.mkdtempSync(path.join(os.tmpdir(), "terminal-browser-agent-"))
+    : null;
+  const files: number[] = [];
+  try {
+    // A Windows daemon can keep inherited output pipes open after its caller exits.
+    const output = directory ? ["stdout", "stderr"].map((name) => path.join(directory, name)) : null;
+    if (output) {
+      for (const file of output) files.push(fs.openSync(file, "wx"));
+    }
+    const result = spawnSync(binary, args, {
+      encoding: "utf8",
+      env: childEnv(),
+      stdio: output ? ["ignore", files[0], files[1]] : ["ignore", "pipe", "pipe"],
+      timeout: agentTimeout(),
+    });
+    const ms = Date.now() - started;
+    const timedOut = (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
+    if (result.error && !timedOut) throw result.error;
+    const stdout = output ? fs.readFileSync(output[0], "utf8") : result.stdout ?? "";
+    const stderr = output ? fs.readFileSync(output[1], "utf8") : result.stderr ?? "";
+    if (stderr) process.stderr.write(stderr);
+    return { status: timedOut ? 1 : result.status ?? 1, stdout, timedOut, ms };
+  } finally {
+    for (const file of files) fs.closeSync(file);
+    if (directory) fs.rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 const FLAGS_WITH_A_VALUE = new Set(["--session", "--cdp"]);

@@ -115,8 +115,10 @@ test("a reconnect that refuses is reported as a refusal, not a timeout", () => {
  * given its own deadline, so a `runAgent` that stopped passing one along fails
  * this test rather than hanging the suite.
  */
-function runAgentInChild({ script, deadlineMs, allowMs }) {
+function runAgentInChild({ script, deadlineMs, allowMs, tempDir }) {
   const driver = path.join(path.dirname(script), "driver.cjs");
+  tempDir ??= path.join(path.dirname(script), "captures");
+  fs.mkdirSync(tempDir, { recursive: true });
   fs.writeFileSync(
     driver,
     [
@@ -130,13 +132,45 @@ function runAgentInChild({ script, deadlineMs, allowMs }) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: allowMs,
+    env: { ...process.env, TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir },
   });
   if (outcome.error?.code === "ETIMEDOUT") {
     assert.fail(`runAgent did not come back within ${allowMs}ms; it is not giving spawnSync a deadline`);
   }
   assert.equal(outcome.status, 0, outcome.stderr);
-  return JSON.parse(outcome.stdout);
+  assert.deepEqual(fs.readdirSync(tempDir), [], "agent output capture is cleaned up");
+  return { ...JSON.parse(outcome.stdout), stderr: outcome.stderr };
 }
+
+test("runAgent returns while a Windows daemon still holds its output handles", { skip: process.platform !== "win32" }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-inherited-output-"));
+  const captures = path.join(dir, "captures");
+  const pidFile = path.join(dir, "daemon.pid");
+  fs.mkdirSync(captures);
+  try {
+    const script = path.join(dir, "agent.cjs");
+    fs.writeFileSync(script, [
+      "const { spawn } = require('node:child_process');",
+      "const daemon = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 10000)'], { detached: true, windowsHide: true, stdio: ['ignore', 1, 2] });",
+      `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(daemon.pid));`,
+      "daemon.unref();",
+      `process.stdout.write(${JSON.stringify('日本語 stdout\n')});`,
+      `process.stderr.write(${JSON.stringify('日本語 stderr\n')});`,
+    ].join("\n"));
+    const result = runAgentInChild({ script, deadlineMs: 1500, allowMs: 20000, tempDir: captures });
+    assert.equal(result.timedOut, false);
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, "日本語 stdout\n");
+    assert.ok(result.stderr.includes("日本語 stderr\n"));
+    process.kill(Number(fs.readFileSync(pidFile, "utf8")), 0);
+    assert.deepEqual(fs.readdirSync(captures), [], "capture files are removed while the daemon is alive");
+  } finally {
+    if (fs.existsSync(pidFile)) {
+      try { process.kill(Number(fs.readFileSync(pidFile, "utf8"))); } catch {}
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 function stallingScript(dir, extra = []) {
   const script = path.join(dir, "forever.cjs");
@@ -193,14 +227,27 @@ test("a deadline that is not a whole number of milliseconds is ignored", () => {
 });
 
 test("runAgent still throws when the binary cannot be started", () => {
-  const missing = path.join(os.tmpdir(), "no-such-agent-binary.exe");
-  assert.throws(
-    () => runAgent(missing, ["--session", "s", "tab", "list"]),
-    (error) => {
-      assert.notEqual(error.code, "ETIMEDOUT", "not started is not the same as out of time");
-      return true;
-    },
-  );
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "agent-start-failure-"));
+  const names = ["TEMP", "TMP", "TMPDIR"];
+  const previous = names.map(name => process.env[name]);
+  try {
+    for (const name of names) process.env[name] = directory;
+    const missing = path.join(directory, "no-such-agent-binary.exe");
+    assert.throws(
+      () => runAgent(missing, ["--session", "s", "tab", "list"]),
+      (error) => {
+        assert.equal(error.code, "ENOENT");
+        return true;
+      },
+    );
+    assert.deepEqual(fs.readdirSync(directory), [], "failed startup leaves no capture files");
+  } finally {
+    names.forEach((name, index) => {
+      if (previous[index] === undefined) delete process.env[name];
+      else process.env[name] = previous[index];
+    });
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("a call's own child does not hold the deadline open", () => {
