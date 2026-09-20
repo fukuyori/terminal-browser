@@ -7,6 +7,9 @@ export {
   AGENT_SOCKETS_DIR,
   DAEMON_SOCKET,
   DB_FILE,
+  consoleScope,
+  daemonName,
+  ipcEndpoint,
   ensureDataDir,
 } from "./paths";
 export { openStore, store } from "./client";

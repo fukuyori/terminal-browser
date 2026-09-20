@@ -16,14 +16,34 @@ interface Manifest {
   skills: string[];
 }
 
-function stateDir(): string {
+export interface SetupLocations {
+  home?: string;
+  state?: string;
+  dist?: string | null;
+  shared?: string;
+}
+
+function homeDir(locations: SetupLocations): string {
+  return locations.home ?? os.homedir();
+}
+
+function stateDir(locations: SetupLocations): string {
+  if (locations.state) return locations.state;
+  const home = homeDir(locations);
+  if (process.platform === "win32") {
+    const configured = process.env.LOCALAPPDATA;
+    const base = configured && path.isAbsolute(configured) ? configured : path.join(home, "AppData", "Local");
+    return path.join(base, "terminal-browser");
+  }
   const configured = process.env.XDG_STATE_HOME;
-  const base = configured && path.isAbsolute(configured) ? configured : path.join(os.homedir(), ".local", "state");
+  const base = configured && path.isAbsolute(configured) ? configured : path.join(home, ".local", "state");
   return path.join(base, "terminal-browser");
 }
 
-function distRoot(): string | null {
-  return process.env.TERMINAL_BROWSER_DIST_ROOT ?? null;
+function distRoot(locations: SetupLocations): string | null {
+  const configured =
+    "dist" in locations ? locations.dist ?? null : process.env.TERMINAL_BROWSER_DIST_ROOT ?? null;
+  return configured ? path.resolve(configured) : null;
 }
 
 function readManifest(root: string): Manifest | null {
@@ -44,7 +64,7 @@ function readManifest(root: string): Manifest | null {
   return manifest;
 }
 
-function isSymlink(file: string): boolean {
+function isLink(file: string): boolean {
   return fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;
 }
 
@@ -52,83 +72,90 @@ function exists(file: string): boolean {
   return fs.lstatSync(file, { throwIfNoEntry: false }) !== undefined;
 }
 
+function inside(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
+}
+
 export interface SkillLinks {
   linkedAgents: string[];
+  linkedPaths: string[];
   left: string[];
 }
 
-export function linkSkills(): SkillLinks {
-  const result: SkillLinks = { linkedAgents: [], left: [] };
-  const root = distRoot();
+export function linkSkills(locations: SetupLocations = {}): SkillLinks {
+  const result: SkillLinks = { linkedAgents: [], linkedPaths: [], left: [] };
+  const root = distRoot(locations);
   if (!root) return result;
   const manifest = readManifest(root);
   if (!manifest) return result;
 
   const wrote = new Set<string>();
   const place = (target: string, link: string): boolean => {
-    if (exists(link) && !isSymlink(link)) {
+    if (exists(link) && !isLink(link)) {
       result.left.push(link);
       return false;
     }
     fs.mkdirSync(path.dirname(link), { recursive: true });
     fs.rmSync(link, { force: true });
-    fs.symlinkSync(target, link);
+    fs.symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
     wrote.add(link);
+    result.linkedPaths.push(link);
     return true;
   };
 
+  const home = homeDir(locations);
   for (const agent of manifest.agents) {
-    const dir = path.join(os.homedir(), agent.location);
-    if (!exists(path.dirname(dir))) continue;
+    const directory = path.join(home, agent.location);
+    if (!exists(path.dirname(directory))) continue;
     let made = false;
     for (const skill of manifest.skills) {
       const target = path.join(root, "skills", agent.variant, skill);
+      const link = path.join(directory, skill);
       if (!fs.existsSync(target)) continue;
-      if (place(target, path.join(dir, skill))) made = true;
+      if (place(target, link)) made = true;
     }
     if (made) result.linkedAgents.push(agent.name);
   }
 
-  const shared = process.env.AGENT_SKILLS_HOME ?? path.join(os.homedir(), ".agents", "skills");
+  const shared =
+    locations.shared ?? process.env.AGENT_SKILLS_HOME ?? path.join(home, ".agents", "skills");
   for (const skill of manifest.skills) {
     const target = path.join(root, "skills", "default", skill);
-    if (!fs.existsSync(target)) continue;
     const link = path.join(shared, skill);
-    if (exists(link) && !isSymlink(link)) {
-      fs.rmSync(path.join(link, "SKILL.md"), { force: true });
-      try {
-        fs.rmdirSync(link);
-      } catch {}
-    }
+    if (!fs.existsSync(target)) continue;
     place(target, link);
   }
 
-  const receiptFile = path.join(stateDir(), "skills.links");
+  const receiptFile = path.join(stateDir(locations), "skills.links");
   let recorded: string[] = [];
   try {
     recorded = fs.readFileSync(receiptFile, "utf8").split("\n").filter(Boolean);
   } catch {}
   for (const link of recorded) {
-    if (wrote.has(link) || !isSymlink(link)) continue;
-    const target = fs.readlinkSync(link);
-    if (target.startsWith(root + path.sep) || !fs.existsSync(target)) fs.rmSync(link, { force: true });
+    if (wrote.has(link) || !isLink(link)) continue;
+    let target: string | null = null;
+    try {
+      target = fs.realpathSync(link);
+    } catch {}
+    if (target === null || inside(root, target)) fs.rmSync(link, { force: true });
   }
-  fs.mkdirSync(stateDir(), { recursive: true });
-  fs.writeFileSync(receiptFile, [...wrote].sort().join("\n") + (wrote.size > 0 ? "\n" : ""));
+  fs.mkdirSync(stateDir(locations), { recursive: true });
+  fs.writeFileSync(receiptFile, `${[...wrote].sort().join("\n")}${wrote.size > 0 ? "\n" : ""}`);
   return result;
 }
 
 function marker(): { file: string; want: string } | null {
-  const root = distRoot();
+  const root = distRoot({});
   const version = installedVersion();
   if (!root || !version) return null;
-  return { file: path.join(stateDir(), "setup-version"), want: `${version} ${root}` };
+  return { file: path.join(stateDir({}), "setup-version"), want: `${version} ${root}` };
 }
 
 export function markSetupDone(): void {
   const state = marker();
   if (!state) return;
-  fs.mkdirSync(stateDir(), { recursive: true });
+  fs.mkdirSync(path.dirname(state.file), { recursive: true });
   fs.writeFileSync(state.file, `${state.want}\n`);
 }
 

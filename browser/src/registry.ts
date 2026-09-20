@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import net from "node:net";
-import path from "node:path";
 
 import { callerTty } from "@zenbu-labs/pixel/terminal";
 import {
   INTEROP_PROTOCOL_VERSIONS,
   advertiseInstance,
+  ipcEndpoint,
   openSpecSchema,
   removeInstance,
   upsertInstance,
@@ -59,9 +59,11 @@ export class Registry {
   constructor(host: ControlHost) {
     this.host = host;
     this.tty = host.tty ?? callerTty().path;
-    this.socketPath = path.join(INSTANCES_DIR, `${host.key}.sock`);
-    fs.mkdirSync(INSTANCES_DIR, { recursive: true });
-    fs.rmSync(this.socketPath, { force: true });
+    this.socketPath = ipcEndpoint(`instance-${host.key}`);
+    if (process.platform !== "win32") {
+      fs.mkdirSync(INSTANCES_DIR, { recursive: true });
+      fs.rmSync(this.socketPath, { force: true });
+    }
     this.server = net.createServer((connection) => this.serve(connection));
     this.server.on("error", () => {});
     this.server.listen(this.socketPath);
@@ -101,7 +103,7 @@ export class Registry {
     this.server = null;
     void removeInstance(this.host.key).catch(() => {});
     withdrawInstance(this.host.key);
-    fs.rmSync(this.socketPath, { force: true });
+    if (process.platform !== "win32") fs.rmSync(this.socketPath, { force: true });
   }
 
   private write() {

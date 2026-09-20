@@ -33,7 +33,7 @@ export interface ActionOptions {
 }
 
 function repoScript(): string {
-  return path.resolve(__dirname, "..", "..", "scripts", "agent-browser.sh");
+  return path.resolve(__dirname, "..", "..", "scripts", "agent-browser.mjs");
 }
 
 export function agentBrowserPath(): string {
@@ -45,13 +45,21 @@ export function agentBrowserPath(): string {
     return override;
   }
   if (DIST_ROOT) {
-    const shipped = path.join(DIST_ROOT, "agent-browser", "bin", "agent-browser");
+    const shipped = path.join(
+      DIST_ROOT,
+      "agent-browser",
+      "bin",
+      process.platform === "win32" ? "agent-browser.exe" : "agent-browser",
+    );
     if (fs.existsSync(shipped)) return shipped;
     throw new Error(`missing ${shipped} — the release is incomplete`);
   }
   const script = repoScript();
   if (!fs.existsSync(script)) throw new Error(`missing ${script}`);
-  return execFileSync(script, ["--path"], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
+  return execFileSync(process.execPath, [script, "--path"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "inherit"],
+  }).trim();
 }
 
 function sessionName(browser: Browser): string {

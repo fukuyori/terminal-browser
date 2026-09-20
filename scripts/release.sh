@@ -35,7 +35,7 @@ if [ -n "$DARWIN_ARCH" ]; then
   rm -f "$STAGE/browser/node_modules/@zenbu-labs/pixel-native-$TARGET/native-scroll-helper"
 fi
 
-AGENT_BROWSER_BIN="$("$ROOT/scripts/agent-browser.sh" --path)"
+AGENT_BROWSER_BIN="$(node "$ROOT/scripts/agent-browser.mjs" --path)"
 cp "$AGENT_BROWSER_BIN" "$STAGE/agent-browser/bin/agent-browser"
 
 "$ROOT/scripts/bundle.sh" "$ROOT/cli/src/main.ts" "$STAGE/cli/dist/main.js"
@@ -43,12 +43,12 @@ cp "$AGENT_BROWSER_BIN" "$STAGE/agent-browser/bin/agent-browser"
 
 cp "$ROOT/scripts/apparmor.sh" "$STAGE/scripts/apparmor.sh"
 
-"$ROOT/scripts/generate-skill.sh"
+node "$ROOT/scripts/generate-skill.mjs"
 cp -R "$ROOT/skill/build" "$STAGE/skills"
 
 cp "$ROOT/assets/fonts/JetBrainsMono-Regular.ttf" "$STAGE/assets/fonts/"
 
-"$ROOT/scripts/copy-react-grab.sh"
+node "$ROOT/scripts/copy-react-grab.mjs"
 mkdir -p "$STAGE/assets/react-grab"
 cp "$ROOT/assets/react-grab/"* "$STAGE/assets/react-grab/"
 

@@ -68,6 +68,12 @@ function runInstaller(url: string): Promise<number> {
 }
 
 export async function upgradeCommand(): Promise<number> {
+  if (process.platform === "win32") {
+    throw new Error(
+      "upgrade only knows how to install the upstream macOS and Linux builds. Download the " +
+        "latest Windows installer from https://github.com/fukuyori/terminal-browser/releases",
+    );
+  }
   const current = installedVersion();
   if (!current) {
     throw new Error("Could not perform upgrade: please file an issue https://github.com/zenbu-labs/terminal-browser/issues");

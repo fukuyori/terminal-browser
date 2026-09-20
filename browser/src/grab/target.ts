@@ -37,6 +37,7 @@ const EMBED_TARGET: AgentTarget = { pane: "embed", tier: "embed", agent: true };
 
 async function withCommands(panes: PaneDetails[]): Promise<PaneDetails[]> {
   if (!panes.some((pane) => pane.tty && pane.command == null)) return panes;
+  if (process.platform === "win32") return panes;
   let listing = "";
   try {
     listing = (await exec("ps", ["-e", "-o", "tty=,args="])).stdout;
@@ -121,6 +122,7 @@ export class AgentPaneFinder {
   private async resolve(): Promise<AgentTarget | null> {
     const terminal = this.ctx.terminal;
     if (!terminal) return null;
+    const windows = process.platform === "win32" || this.ctx.parentTty?.startsWith("CONIN$#");
     let panes: PaneDetails[] = [];
     try {
       panes = await withCommands(
@@ -135,13 +137,15 @@ export class AgentPaneFinder {
     const parent = await this.parentPane(panes);
     if (parent && parent.id !== self?.id && inTab(parent)) {
       if (panes.length === 0 || panes.some((pane) => pane.id === parent.id)) {
-        return { pane: parent.id, tier: "parent", agent: isAgentPane(parent) };
+        const agent = isAgentPane(parent);
+        if (agent || !windows) return { pane: parent.id, tier: "parent", agent };
       }
     }
     if (!self) return null;
     const neighbours = panes.filter((pane) => pane.id !== self.id && pane.tab === self.tab);
     const agent = neighbours.find(isAgentPane);
     if (agent) return { pane: agent.id, tier: "agent", agent: true };
+    if (windows) return null;
     if (neighbours.length > 0) return { pane: neighbours[0].id, tier: "neighbor", agent: false };
     return null;
   }

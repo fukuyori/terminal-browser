@@ -426,6 +426,7 @@ class Session {
         detached: true,
         stdio: tty ? "ignore" : "inherit",
         env,
+        windowsHide: true,
       });
       child.on("error", () => this.showToast(`could not launch ${app.name}`, "failed"));
       child.unref();

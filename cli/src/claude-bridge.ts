@@ -10,7 +10,8 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import { callerTty } from "@zenbu-labs/pixel/terminal";
+import { attachWindowsConsole, callerTty } from "@zenbu-labs/pixel/terminal";
+import { ipcEndpoint } from "pixel-store";
 
 import { installedVersion } from "./upgrade";
 
@@ -37,6 +38,27 @@ function selfCommand(): string[] {
 }
 
 
+/** clip.exe reads stdin as the console codepage unless it is given utf-16. */
+export function clipboardWriter(
+  text: string,
+  platform: NodeJS.Platform = process.platform,
+): { command: string; bytes: Buffer } | null {
+  if (platform === "darwin") return { command: "pbcopy", bytes: Buffer.from(text, "utf8") };
+  if (platform === "win32") return { command: "clip.exe", bytes: Buffer.from(text, "utf16le") };
+  return null;
+}
+
+function copyToClipboard(text: string): void {
+  const writer = clipboardWriter(text);
+  if (!writer) return;
+  try {
+    const child = spawn(writer.command, { stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
+    child.on("error", () => {});
+    child.stdin!.on("error", () => {});
+    child.stdin!.end(writer.bytes);
+  } catch {}
+}
+
 function parseCell(text: string | undefined): [number, number] | null {
   const m = /^(\d+)x(\d+)$/.exec(text ?? "");
   return m ? [Number(m[1]), Number(m[2])] : null;
@@ -53,38 +75,63 @@ function report(value: unknown, exitCode = 0): never {
 async function launch(argv: string[]): Promise<never> {
   const tty = flag(argv, "--tty") ?? callerTty().path;
   if (!tty) report({ error: "no tty: Claude Code is not running on a terminal", code: "tty" }, 2);
-  const transport = flag(argv, "--transport") ?? "file"
+  const transport = flag(argv, "--transport") ?? "file";
   const cellOverride = flag(argv, "--cell") ?? process.env.CC_BROWSER_CELL ?? "";
   const token = crypto.randomBytes(24).toString("hex");
-  const socket = path.join(os.tmpdir(), `cc-browser-${process.pid}-${Date.now().toString(36)}.sock`);
+  const name = `cc-browser-${process.pid}-${Date.now().toString(36)}`;
+  const socket =
+    process.platform === "win32"
+      ? ipcEndpoint(name)
+      : path.join(os.tmpdir(), `${name}.sock`);
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const logFd = fs.openSync(LOG_FILE, "a");
   const [self, ...selfArgs] = selfCommand();
-  const child = spawn(
-    self,
-    [...selfArgs, "claude-bridge", "serve", "--tty", tty, "--transport", transport, "--socket", socket, "--cell", cellOverride, "--token", token],
-    { detached: true, stdio: ["ignore", "pipe", logFd] },
-  );
-  let line = "";
+  const consoleArgs = process.platform === "win32" ? ["--console-pid", String(process.pid)] : [];
+  let child: ChildProcess;
   try {
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("bridge did not report its port")), 10_000);
-      child.stdout!.on("data", (chunk: Buffer) => {
-        line += chunk.toString();
+    child = spawn(
+      self,
+      [...selfArgs, "claude-bridge", "serve", "--tty", tty, "--transport", transport, "--socket", socket, "--cell", cellOverride, "--token", token, ...consoleArgs],
+      { detached: true, stdio: ["ignore", "pipe", logFd], windowsHide: true },
+    );
+  } finally {
+    fs.closeSync(logFd);
+  }
+  let port: number;
+  try {
+    port = await new Promise<number>((resolve, reject) => {
+      let line = "";
+      const fail = (error: Error) => {
+        clearTimeout(timer);
+        reject(error);
+      };
+      const timer = setTimeout(() => fail(new Error("bridge did not report its port")), 10_000);
+      child.stdout!.setEncoding("utf8");
+      child.stdout!.on("data", (chunk: string) => {
+        line += chunk;
         if (line.includes("\n")) {
           clearTimeout(timer);
-          resolve();
+          try {
+            const ready = JSON.parse(line.split("\n")[0]) as { port?: number; error?: string };
+            if (ready.error) throw new Error(ready.error);
+            if (typeof ready.port !== "number" || !Number.isInteger(ready.port) || ready.port < 1 || ready.port > 65535) {
+              throw new Error("bridge reported an invalid port");
+            }
+            resolve(ready.port);
+          } catch (error) {
+            fail(error instanceof Error ? error : new Error(String(error)));
+          }
         }
       });
+      child.once("error", fail);
       child.once("exit", (code) => {
-        clearTimeout(timer);
-        reject(new Error(`bridge exited with ${code}`));
+        fail(new Error(`bridge exited with ${code}`));
       });
     });
   } catch (error) {
+    child.kill();
     report({ error: error instanceof Error ? error.message : String(error), code: "start" }, 1);
   }
-  const { port } = JSON.parse(line.split("\n")[0]) as { port: number };
   child.stdout!.destroy();
   child.unref();
   const launched = { port, pid: child.pid, tty, transport, terminalBrowser: installedVersion() ?? "dev", token };
@@ -175,7 +222,7 @@ class Bridge {
   }
 
   listenForPixel(): void {
-    fs.rmSync(this.socketPath, { force: true });
+    if (process.platform !== "win32") fs.rmSync(this.socketPath, { force: true });
     this.pixelServer = net.createServer((conn) => {
       if (this.conn) {
         conn.destroy();
@@ -183,8 +230,9 @@ class Bridge {
       }
       this.conn = conn;
       this.lineBuf = "";
-      conn.on("data", (data: Buffer) => {
-        this.lineBuf += data.toString("utf8");
+      conn.setEncoding("utf8");
+      conn.on("data", (data: string) => {
+        this.lineBuf += data;
         let at = this.lineBuf.indexOf("\n");
         while (at !== -1) {
           this.handlePixelLine(this.lineBuf.slice(0, at));
@@ -228,11 +276,7 @@ class Bridge {
         break;
       case "clipboard":
         if (DEBUG) log("clipboard from browser", { chars: message.text.length });
-        if (process.platform === "darwin") {
-          try {
-            spawn("pbcopy", { stdio: ["pipe", "ignore", "ignore"] }).stdin!.end(message.text);
-          } catch {}
-        }
+        copyToClipboard(message.text);
         break;
       case "pointer":
         break;
@@ -259,6 +303,8 @@ class Bridge {
     delete env.PIXEL_PANE;
     env.PIXEL_EMBED = this.socketPath;
     env.PIXEL_TTY = this.tty;
+    // Keep the caller's console attached until the browser stops.
+    if (process.platform === "win32") env.TERMINAL_BROWSER_CONSOLE_PID = String(process.pid);
     env.TERMINAL_BROWSER_COPY_ON_SELECT = "1";
     env.TERMINAL_BROWSER_START_PAGE = "1";
     if (this.port) {
@@ -266,10 +312,15 @@ class Bridge {
       env.TERMINAL_BROWSER_AGENT_TOKEN = this.token;
     }
     const [command, ...args] = selfCommand();
-    const child = spawn(command, [...args, "open", this.url], { env, stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn(command, [...args, "open", this.url], {
+      env,
+      stdio: ["ignore", "ignore", "pipe"],
+      windowsHide: true,
+    });
     let stderr = "";
-    child.stderr!.on("data", (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-2000);
+    child.stderr!.setEncoding("utf8");
+    child.stderr!.on("data", (chunk: string) => {
+      stderr = (stderr + chunk).slice(-2000);
     });
     child.on("error", (error) => {
       this.alive = false;
@@ -307,7 +358,11 @@ class Bridge {
     const key = await this.browserKey();
     const [command, ...args] = selfCommand();
     const selectors = key ? ["--browser", key] : [];
-    spawn(command, [...args, "action", ...selectors, "--", "open", url], { env: process.env, stdio: "ignore" }).on("error", () => {});
+    spawn(command, [...args, "action", ...selectors, "--", "open", url], {
+      env: process.env,
+      stdio: "ignore",
+      windowsHide: true,
+    }).on("error", () => {});
   }
 
   resize(size: Size): void {
@@ -356,7 +411,7 @@ class Bridge {
       try {
         this.pixelServer?.close();
       } catch {}
-      fs.rmSync(this.socketPath, { force: true });
+      if (process.platform !== "win32") fs.rmSync(this.socketPath, { force: true });
       process.exit(0);
     };
     if (child && child.exitCode === null) {
@@ -377,8 +432,9 @@ class Bridge {
 function readJson(request: http.IncomingMessage): Promise<unknown> {
   return new Promise((resolve) => {
     let body = "";
-    request.on("data", (chunk: Buffer) => {
-      body += chunk.toString();
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => {
+      body += chunk;
     });
     request.on("end", () => {
       try {
@@ -449,6 +505,14 @@ function serve(argv: string[]): void {
   if (!tty || !socket) {
     process.stderr.write("claude-bridge serve needs --tty and --socket\n");
     process.exit(2);
+  }
+  const consolePid = flag(argv, "--console-pid");
+  if (process.platform === "win32" && consolePid !== undefined) {
+    try {
+      attachWindowsConsole(Number(consolePid));
+    } catch (error) {
+      report({ error: `could not attach to the caller's console: ${error instanceof Error ? error.message : String(error)}` }, 1);
+    }
   }
   const bridge = new Bridge(tty, transport, socket, cellOverride, token);
   bridge.listenForPixel();

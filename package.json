@@ -3,9 +3,11 @@
   "private": true,
   "scripts": {
     "build": "pnpm -r build",
+    "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
+    "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows-inno.ps1",
     "browser": "pnpm --filter terminal-browser start",
-    "types": "scripts/plugin-types.sh",
-    "postinstall": "scripts/plugin-types.sh --if-missing",
+    "types": "node scripts/plugin-types.mjs",
+    "postinstall": "node scripts/plugin-types.mjs --if-missing",
     "build:dist": "scripts/release.sh \"local-$(git rev-parse --short HEAD)\"",
     "install:dist": "scripts/install-local.sh",
     "dist": "pnpm build:dist && pnpm install:dist",
@@ -17,5 +19,10 @@
   "devDependencies": {
     "@electron/osx-sign": "^1.3.3",
     "esbuild": "^0.25.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@zenbu-labs/pixel-native-win32-x64": "file:../pixel/packages/native/win32-x64"
+    }
   }
 }

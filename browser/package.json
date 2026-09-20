@@ -4,14 +4,14 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "postinstall": "bash ../scripts/copy-react-grab.sh",
+    "postinstall": "node ../scripts/copy-react-grab.mjs",
     "build": "tsc -p tsconfig.json",
-    "start": "pnpm build && pnpm --filter terminal-browser-cli build && exec node ../cli/dist/main.js",
+    "start": "pnpm build && pnpm --filter terminal-browser-cli build && node ../cli/dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "tsc -p tsconfig.json && node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@zenbu-labs/pixel": "0.0.15",
+    "@zenbu-labs/pixel": "file:../../pixel/packages/pixel",
     "micromark": "^4.0.2",
     "micromark-extension-gfm": "^3.0.0",
     "pixel-store": "workspace:*",

@@ -85,7 +85,10 @@ export function listInteropInstances(): InteropInstance[] {
     const file = path.join(INTEROP_INSTANCES_DIR, name);
     const parsed = interopInstanceSchema.safeParse(readJson(file));
     if (!parsed.success) continue;
-    if (!alive(parsed.data.pid) || !fs.existsSync(parsed.data.socket)) {
+    if (
+      !alive(parsed.data.pid) ||
+      (process.platform !== "win32" && !fs.existsSync(parsed.data.socket))
+    ) {
       fs.rmSync(file, { force: true });
       continue;
     }
