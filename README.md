@@ -17,16 +17,16 @@ other platforms remains in the original project.
 | --- | --- | --- |
 | Runtime | Original terminal and process integrations | Windows x64 port using Win32 Console, ConPTY, named pipes, and Windows paths |
 | Graphics | Kitty graphics rendering | WezTerm file-frame transport and a Windows-specific iTerm2 PNG fallback |
-| Distribution | Original release process | Inno Setup installer, versioned portable ZIP, Authenticode signing, and automated Windows release jobs |
+| Distribution | Original release process | Maintainer-signed Inno Setup installer and versioned portable ZIP, with separate Windows CI verification |
 | SSH and setup | Original SSH and skill workflows | Windows OpenSSH and `tar.exe` handling, plus Windows-compatible skill setup |
-| Version | `v0.11.1` | Development target `0.11.1-win.1`, identifying the upstream base and Windows revision |
+| Version | `v0.11.1` | `0.11.1-win.1`, identifying the upstream base and Windows revision |
 
 Features incorporated from upstream and changes unique to each Windows release are listed in the
 [changelog](CHANGELOG.md).
 
-As of 2026-09-21, `0.11.1-win.1` has not been published as a GitHub Release.
-The Windows CI build, tests and artifact checks passed; its unsigned
-`verify-326c74b` artifacts are for verification. See the
+[0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1)
+was published on 2026-09-21 with the locally built, signed and verified ZIP and
+installer. CI builds are unsigned and are for verification only. See the
 [CI results](docs/ci-verification.md) and [device checks](docs/windows-device-checks.md).
 
 ## Windows support (experimental)

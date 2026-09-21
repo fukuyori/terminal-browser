@@ -17,12 +17,18 @@ Windows 対応フォーク (`windows-native`) を upstream `zenbu-labs/terminal-
   各記録のビルドで通過。以前の予期しない終了の原因は未特定。
 - [終了問題](https://github.com/fukuyori/terminal-browser/issues/1)は再現確認が残る。
   [WezTerm の埋め込み対応](https://github.com/fukuyori/terminal-browser/issues/2)は保留。
-- 開発対象版 `0.11.1-win.1` は GitHub Release 未公開。終了診断ログと
+- `0.11.1-win.1` を [GitHub Release](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1)
+  として公開済み。終了診断ログと
   インストーラー名の修正を含む署名済み成果物をメンテナーが再作成し、
   インストール・Ghostty での起動と表示と終了・アンインストールまで通過。
   [今回のF群の記録](windows-device-checks.md#signed-package-retest-on-2026-09-21)に
   ハッシュ・未コミット変更を含む作成元・再確認していない項目を記載した。
-  stable CI の署名・R2公開・GitHub Release作成は今回の検証対象外。
+  タグ起動の旧 stable CI は署名用シークレット不足と macOS/Linux の Pixel 配置不足で失敗し、
+  キャンセルした。手元の署名済み ZIP・EXE と2つのマニフェストを公開し、GitHub 側の
+  サイズ・SHA-256一致を確認した。タグは `eb594b2` のまま維持している。
+- CI を Windows の未署名検証に限定する変更を作成済み。新しい workflow の実行は未確認。
+  [現在の CI・公開手順](ci-verification.md#current-workflow)を参照。
+  以下にある署名・macOS/Linux・R2・Worker を含む stable CI の設計は旧構成の記録。
 
 ## 調査時点のリビジョン
 

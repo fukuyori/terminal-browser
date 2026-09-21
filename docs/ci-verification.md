@@ -1,4 +1,57 @@
-# Verifying the two-repository Windows CI
+# Windows CI and signed release publication
+
+## Current workflow
+
+The workflow in `.github/workflows/release.yml` is named **Windows CI**. It runs
+one Windows job on pushes to `main`, `windows-v0.11.1` and `*-win.*` tags, or
+by manual dispatch without inputs. It checks out this repository at the event
+SHA and the adjacent `fukuyori/pixel` checkout at `pixel.commit`.
+
+Every run uses `verify-<sha>` and channel `dev`, including tag-triggered runs.
+It builds and tests Pixel and terminal-browser, creates an unsigned ZIP and
+installer, and uploads `windows-verification-windows-x64`. The installer uses
+the same `verify-<sha>` filename, with internal version `0.0.0.0`.
+
+The workflow has `contents: read`. It does not sign, create or push tags,
+publish GitHub Releases or R2 objects, deploy the worker, or run macOS/Linux
+jobs. It needs no signing or Cloudflare secrets. These CI artifacts are for
+verification and must not be distributed as signed release packages.
+
+After committing and pushing the workflow change, the branch push starts CI.
+To request another run explicitly:
+
+```powershell
+gh workflow run release.yml --repo fukuyori/terminal-browser --ref windows-v0.11.1
+```
+
+Confirm that the run's `headSha` matches the intended commit. Publishing is a
+separate maintainer action: build with `-Sign`, check the artifacts and their
+manifests, then upload the exact signed ZIP, EXE and two manifests to a GitHub
+Release for the existing tag. See the [release checklist](version-update-checklist.md).
+
+## Cancelled tag run on 2026-09-21
+
+The old release workflow ran for `0.11.1-win.1` at `eb594b2`:
+[run 35557400121](https://github.com/fukuyori/terminal-browser/actions/runs/35557400121).
+Preparation succeeded, but Windows stopped because `WINDOWS_CODESIGN_PFX`
+was absent. Linux x64/ARM64 and macOS x64 failed installation because their
+jobs did not provide the adjacent Pixel checkout. macOS ARM64 waited for a
+self-hosted runner. The run was cancelled, and it did not create a Release.
+
+The tag stays at `eb594b2`; it is not moved to change the workflow. Re-running
+that old run uses the old workflow. Verify the revised workflow from the
+updated branch instead. A run of the revised workflow is still pending.
+
+At 12:34:25 JST, the locally signed and tested ZIP/EXE and both manifests were
+published as [0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1).
+All four uploaded asset sizes and SHA-256 digests matched the local files.
+This manual publication did not use output from the failed run.
+
+## Historical Windows verification mode
+
+The following instructions and run records describe the earlier workflow,
+before signing and publication were separated from CI. Its `verify_windows`,
+`bump` and `deploy_worker` inputs no longer exist in the revised workflow.
 
 The Windows job in `.github/workflows/release.yml` was rewritten to build from
 two checkouts: this repository and the `fukuyori/pixel` commit that

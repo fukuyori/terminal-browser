@@ -31,6 +31,9 @@ tested builds, not the current state of generated files in any checkout.
 - `pixel.commit` is `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`, including the
   frame-mode and key-ordering fixes. WezTerm's embedded Image support is
   [deferred](https://github.com/fukuyori/terminal-browser/issues/2).
+- The signed artifacts in the later F retest were published as
+  [0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1).
+  GitHub asset sizes and SHA-256 digests matched all four local release files.
 
 ## How to run it
 
@@ -688,6 +691,15 @@ browser exit. No release was published as part of these checks.
 The old `terminal-browser-0.11.1.1-windows-x64.exe` from 11:59 JST remained in
 `dist-release/` during verification. It is not the installer referenced by the
 current manifest and must be excluded from distribution.
+
+The signed ZIP and renamed EXE above, plus both manifests, were published on
+2026-09-21 at 12:34:25 JST as
+[0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1).
+The tag points to `eb594b256fb99888aab351a0da26c22edbb57533`, which includes the
+filename fix and the check records. All four uploaded assets matched the local
+files by size and GitHub's SHA-256 digest; the obsolete EXE was not uploaded.
+Publication used these local signed artifacts after cancelling the failed
+tag-triggered workflow, rather than rebuilding distribution files on CI.
 
 ## G. The console identifier
 

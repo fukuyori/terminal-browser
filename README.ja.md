@@ -16,16 +16,16 @@ Windowsフォークだけを対象としています。
 | --- | --- | --- |
 | 実行環境 | オリジナルのターミナル・プロセス連携 | Win32 Console、ConPTY、名前付きパイプ、Windowsパスを使用するWindows x64移植 |
 | 描画 | kitty graphicsによる描画 | WezTermのファイルフレーム転送とWindows固有のiTerm2 PNGフォールバック |
-| 配布 | オリジナルのリリース処理 | Inno Setupインストーラー、バージョン付きポータブルZIP、Authenticode署名、Windowsリリース自動化 |
+| 配布 | オリジナルのリリース処理 | メンテナーが署名したInno Setupインストーラーとバージョン付きポータブルZIP、別途Windows CIで検証 |
 | SSH・セットアップ | オリジナルのSSH・skill処理 | Windows OpenSSHと`tar.exe`への対応、Windows互換のskill setup |
-| バージョン | `v0.11.1` | 上流の基準版とWindows改訂番号を表す開発対象版`0.11.1-win.1` |
+| バージョン | `v0.11.1` | 上流の基準版とWindows改訂番号を表す`0.11.1-win.1` |
 
 上流から取り込んだ機能と各Windowsリリース固有の変更は、
 [変更履歴](CHANGELOG.ja.md)を参照してください。
 
-2026-09-21時点で、`0.11.1-win.1` は GitHub Release 未公開です。
-Windows CI のビルド・テスト・成果物確認は通過しましたが、未署名の
-`verify-326c74b` 成果物は検証用です。[CI結果](docs/ci-verification.md)と
+2026-09-21に、ローカルで作成・署名・検証した ZIP とインストーラーを
+[0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1)
+として公開しました。CI の未署名成果物は検証用です。[CI結果](docs/ci-verification.md)と
 [実機確認記録](docs/windows-device-checks.md)を参照してください。
 
 ## Windows対応（実験的）

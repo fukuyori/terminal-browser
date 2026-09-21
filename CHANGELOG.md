@@ -6,6 +6,11 @@ Notable changes to the Windows fork of terminal-browser are documented here.
 
 ## Unreleased
 
+- Limit CI to Windows build/test/installer verification with read-only repository
+  permissions. Publish maintainer-signed packages separately through GitHub Releases.
+
+## 0.11.1-win.1 (2026-09-21)
+
 - Use the payload version in both ZIP and installer filenames. Keep the numeric
   Windows version separate as `installerVersion` in the installer manifest.
 
@@ -56,7 +61,7 @@ Notable changes to the Windows fork of terminal-browser are documented here.
   plugin rendering and interaction also passed the Ghostty device checks;
   sustained-use reliability remains a separate check.
 
-## 0.11.1-win.1 (migration baseline, not yet published)
+### Migration baseline
 
 Based on upstream terminal-browser v0.11.1. The entries below describe changes since
 `0.8.0-win.1`.
