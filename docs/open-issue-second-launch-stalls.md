@@ -166,10 +166,9 @@ for 14 seconds after resizing and confirmed that frame contents kept changing,
 past the approximately 12-second failure reported originally.
 
 The dependency was rebuilt and refreshed in this checkout. The fix spans this
-repository and `../pixel`; `pixel.commit` still names the existing committed
-revision, since no commit was requested. Update the pin after the Pixel fix
-has been committed before making a reproducible release. That was done on
-2026-09-21: `pixel.commit` names `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
+repository and `../pixel`. The pin was updated after the Pixel fixes were
+committed; since 2026-09-21, `pixel.commit` names
+`5bb53b956ec2b9d1373e56f8c0c8869a720668bd`, which includes the host/guest fix.
 
 ## Completed device check
 

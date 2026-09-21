@@ -4,6 +4,8 @@
 - Update the current version and four-part installer example in `README.md` and `README.ja.md`.
 - Add matching release entries to `CHANGELOG.md` and `CHANGELOG.ja.md`.
 - Confirm `scripts/package-windows-inno.ps1` maps `X.Y.Z-win.N` to `X.Y.Z.N`.
+- Keep `X.Y.Z-win.N` in both ZIP and EXE filenames and both manifests' `version`.
+  The installer manifest's `installerVersion` holds the numeric `X.Y.Z.N`.
 - Confirm `.github/workflows/release.yml` accepts the `X.Y.Z-win.N` release tag.
 - Build the portable ZIP and Inno Setup installer with `-Sign`, without committing
   `dist-release`. Everything under `dist-release` is what gets signed and released, so

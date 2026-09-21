@@ -6,6 +6,9 @@ Notable changes to the Windows fork of terminal-browser are documented here.
 
 ## Unreleased
 
+- Use the payload version in both ZIP and installer filenames. Keep the numeric
+  Windows version separate as `installerVersion` in the installer manifest.
+
 - Build `pixel-store` before the Windows CI typecheck so clean runners can
   resolve its generated declarations.
 
@@ -41,17 +44,19 @@ Notable changes to the Windows fork of terminal-browser are documented here.
   for input. Frames travel through the Pixel host connection and an authenticated
   local bridge. Large images use a reduced RGBA image to stay within the inline
   API limit; IME commits preserve multiple characters. Resize and hide/reopen
-  checks pass against the real browser; production Ghostty device checks remain.
-  Requires Pixel's matching `PIXEL_EMBED_FRAMES` change in the adjacent checkout.
+  checks and production Ghostty E1–E5/resize checks passed. The earlier unexpected
+  exit remains open. Pixel's required frame-mode and key-ordering changes are
+  included in the pinned `5bb53b9` revision.
 
 - Keep the Windows Claude Code bridge alive after its launcher exits. The bridge
   attaches to the caller's console before reporting readiness and reports a startup
   error if attachment fails. This requires the matching Pixel native build.
 - Add regression coverage for launcher exit, console retention, HTTP requests,
   bridge shutdown, and startup without an accessible console. Actual Claude Code
-  plugin rendering remains part of the Windows migration's device checks.
+  plugin rendering and interaction also passed the Ghostty device checks;
+  sustained-use reliability remains a separate check.
 
-## 0.11.1-win.1
+## 0.11.1-win.1 (migration baseline, not yet published)
 
 Based on upstream terminal-browser v0.11.1. The entries below describe changes since
 `0.8.0-win.1`.

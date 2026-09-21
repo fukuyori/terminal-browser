@@ -11,9 +11,10 @@ https://github.com/user-attachments/assets/a79e7667-6fcb-49a4-9967-44d0f942102c
 
 ## Installation
 
-For the local Windows fork under development, use Ghostty and load this checkout
-for the session. The Image migration requires the matching local Pixel build;
-the upstream marketplace does not supply these uncommitted changes.
+For the Windows fork, use Ghostty and load this checkout for the session.
+The Image migration is committed in this fork and requires the matching Pixel
+build pinned by [`pixel.commit`](../pixel.commit). The upstream marketplace
+installation below is a separate distribution and does not select this checkout.
 
 ```powershell
 $env:CLAUDE_CODE_ENABLE_FUNCTION_HOOKS = '1'
@@ -23,6 +24,12 @@ claude --plugin-dir D:\home\source\rust\terminal-browser\claude-code-plugin
 Then run `/browser` in Claude Code. `/browser close` hides the pane and keeps
 the browser for reuse. The bridge exits after 60 seconds without requests;
 Claude Code continues polling while the session is running.
+
+### Upstream installation
+
+The following shell/marketplace instructions are for the upstream distribution.
+For the Windows fork, use the checkout instructions above and the
+[Windows build instructions](../README.md#build-windows-from-source).
 
 Install terminal-browser
 ```
@@ -55,7 +62,7 @@ claude plugin install terminal-browser@terminal-browser
 
 Now you can run "/browser" inside claude code to open the browser
 
-### Updating
+### Updating the upstream installation
 
 Update the claude code plugin
 ```
@@ -66,6 +73,10 @@ Update terminal-browser
 ```
 terminal-browser upgrade
 ```
+
+For the Windows fork, update the checkout and its pinned Pixel build, or install
+a published Windows package. `terminal-browser upgrade` on Windows directs you
+to the fork's releases page; it does not install this development branch.
 
 ### Configuration
 
@@ -130,27 +141,28 @@ terminal-browser's internals have been extracted to a javascript library - https
 
 ## Supported terminals
 
-The terminal-browser claude code plugin will only work in terminals that support the [kitty graphics protocol], and implement [kitty unicode placeholders](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders). The most popular terminals that support this feature are:
-- [ghostty](https://ghostty.org)
-- [kitty](https://sw.kovidgoyal.net/kitty/)
+Embedded images require both terminal support for the [kitty graphics protocol]
+with [Unicode placeholders](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders)
+and acceptance by Claude Code's Image capability check.
 
-If your terminal does not support the required features, trying to open the browser inside claude code may garble the TUI
+For the tested Claude Code 2.1.278 build, its Image API identifies kitty and
+Ghostty as supported terminals. The Windows production checks here were run
+on Ghostty. WezTerm was rejected and drew alternative text; ordinary browser
+display in WezTerm is a separate working path.
 
-In addition any terminals that are built on libghostty will support this feature, some examples are:
-- [cmux](https://cmux.com/)
-- [supacode](https://supacode.sh/)
-
-You can find more libghostty based terminals here: [awesome-libghostty](https://github.com/Uzaaft/awesome-libghostty)
-
-Even if your terminal supports the required graphics feature, if you are running a multiplexer, the plugin may not work. This is because multiplexers rewrite the output of terminal programs and breaks terminal graphics commands. tmux support will be arriving soon (terminal-browser currently works in tmux, just not through the claude code plugin yet), and within herdr performance is very bad when running through the claude code plugin, but will likely improve soon. Other multiplexers I have not tested, so if it does not work please file an issue and I will see if we can support this.
+Other terminals, including those built on libghostty, and sessions through
+terminal multiplexers were not covered by these production Windows checks.
+Sharing a graphics implementation does not establish that Claude Code accepts
+the terminal or that this plugin works in that configuration.
 
 
 
 
 ## Caveats:
 - depends on your terminal supporting the [kitty graphics protocol]
-- the Image path is validated in the diagnostic plugin on Ghostty with Claude Code 2.1.278; the production `/browser` still needs its manual device checks
-- WezTerm is rejected by the Image capability check in the tested Claude Code build; see [the investigation](../docs/open-issue-plugin-placeholder-refused.md)
+- production `/browser` checks passed on Ghostty with Claude Code 2.1.278 for drawing, IME input, Japanese/multiline copying, resize/input, hide/reopen and session-exit cleanup; see [the device results](../docs/windows-device-checks.md#current-manual-results-after-the-fixes)
+- an earlier [unexpected browser exit](https://github.com/fukuyori/terminal-browser/issues/1) remains unexplained; lifecycle logging is implemented, but the original incident has not been reproduced
+- WezTerm is rejected by the Image capability check in the tested Claude Code build; [terminal-browser alternatives](https://github.com/fukuyori/terminal-browser/issues/2) and [WezTerm support](https://github.com/fukuyori/wezterm/issues/1) are deferred. The standalone browser in WezTerm was verified separately
 - pointer fractions are used when Claude Code supplies them; otherwise input targets the centre of the terminal cell
 - the plugin needs to make fetch requests to a local http server to communicate with the terminal-browser CLI, which may cause a prompt to show in your OS that your terminal wants to access the local network
 - claude code sets a very high min width for the chat area, so its sometimes not possible to resize the browser to the size you want

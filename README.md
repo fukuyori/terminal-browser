@@ -10,7 +10,7 @@ A real browser that runs inside your Windows terminal.
 
 This repository is a Windows-specific fork of
 [zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser). The current
-release is based on upstream v0.11.1. This README covers the Windows fork only; documentation for
+development branch is based on upstream v0.11.1. This README covers the Windows fork only; documentation for
 other platforms remains in the original project.
 
 | Area | Upstream v0.11.1 | This Windows fork |
@@ -19,15 +19,20 @@ other platforms remains in the original project.
 | Graphics | Kitty graphics rendering | WezTerm file-frame transport and a Windows-specific iTerm2 PNG fallback |
 | Distribution | Original release process | Inno Setup installer, versioned portable ZIP, Authenticode signing, and automated Windows release jobs |
 | SSH and setup | Original SSH and skill workflows | Windows OpenSSH and `tar.exe` handling, plus Windows-compatible skill setup |
-| Version | `v0.11.1` | `0.11.1-win.1`, identifying the upstream base and Windows revision |
+| Version | `v0.11.1` | Development target `0.11.1-win.1`, identifying the upstream base and Windows revision |
 
 Features incorporated from upstream and changes unique to each Windows release are listed in the
 [changelog](CHANGELOG.md).
 
+As of 2026-09-21, `0.11.1-win.1` has not been published as a GitHub Release.
+The Windows CI build, tests and artifact checks passed; its unsigned
+`verify-326c74b` artifacts are for verification. See the
+[CI results](docs/ci-verification.md) and [device checks](docs/windows-device-checks.md).
+
 ## Windows support (experimental)
 
-This fork provides a native Windows x64 build. It has been tested with PowerShell 7 and
-WezTerm nightly.
+This fork provides a native Windows x64 build. Device checks cover Ghostty on
+Windows and the standalone browser in WezTerm, using PowerShell.
 
 Windows support includes:
 
@@ -44,7 +49,10 @@ Windows support includes:
 
 ### Requirements
 
-Install WezTerm nightly. For the fastest rendering path, enable the kitty keyboard and graphics
+Use Ghostty on Windows or WezTerm nightly for the standalone browser. The Claude
+Code plugin's embedded Image path was validated on Ghostty with Claude Code 2.1.278;
+WezTerm support for that path is [deferred](https://github.com/fukuyori/terminal-browser/issues/2).
+For the WezTerm file-frame path, enable the kitty keyboard and graphics
 protocols in `wezterm.lua`, then restart WezTerm:
 
 ```lua
@@ -106,14 +114,21 @@ removes the user `PATH` entry added by the installer.
 
 On Windows, start the plugin from a terminal console. The bridge keeps that console
 attached after its launcher exits; if it cannot attach, startup returns an error.
-The CLI and Pixel native binary must come from matching builds. Actual plugin
-rendering and interaction are still pending the migration's device checks.
+The CLI and Pixel native binary must come from matching builds. Production
+Ghostty checks passed for drawing, IME input, Japanese/multiline copying,
+resize/input, hide/reopen and session-exit cleanup. An earlier
+[unexpected browser exit](https://github.com/fukuyori/terminal-browser/issues/1)
+remains unexplained; those passes do not establish sustained reliability.
 
 ### Build Windows from source
 
+Place a checkout of [fukuyori/pixel](https://github.com/fukuyori/pixel) at
+`../pixel`, checked out at the full SHA in [pixel.commit](pixel.commit).
+The build script installs and builds Pixel before installing this workspace.
+Run from the terminal-browser repository:
+
 ```powershell
-corepack pnpm install --frozen-lockfile
-.\scripts\build-windows.ps1
+.\scripts\build-windows.ps1 -RequireCleanPixel
 .\scripts\package-windows-inno.ps1
 ```
 
@@ -121,16 +136,24 @@ The build writes the unpacked payload to `dist-release\terminal-browser`. Add `-
 `dist-release\terminal-browser-<version>-windows-x64.zip`:
 
 ```powershell
-.\scripts\build-windows.ps1 -Zip
+.\scripts\build-windows.ps1 -Zip -RequireCleanPixel
 ```
 
-The ZIP is optional, is about 190 MB, and is not required to create the installer. The pinned
+The ZIP is optional, is about 209 MB in the verified CI build, and is not required to create the installer. The pinned
 `agent-browser` dependency is built and included automatically. Use
 `-AgentBrowserPath C:\path\to\agent-browser.exe` only to override that binary.
 
 `package-windows-inno.ps1` requires Inno Setup 6 and creates
 `dist-release\terminal-browser-<version>-windows-x64.exe`. The installer supports English and
 Japanese, installs per user, can update the user `PATH`, and can create a WezTerm shortcut.
+
+These commands produce unsigned development artifacts. For distribution, the
+maintainer adds `-Sign` to both scripts; see the
+[version and release checklist](docs/version-update-checklist.md). On 2026-09-21,
+the maintainer rebuilt signed packages with lifecycle logging and the installer
+filename fix. Installation, Ghostty launch/display/exit, and uninstall checks
+passed; see the [signed package retest](docs/windows-device-checks.md#signed-package-retest-on-2026-09-21)
+for exact artifacts and checks not repeated on this build.
 
 ### Windows versioning
 
@@ -142,6 +165,11 @@ build. The value is written to `VERSION` and displayed by `terminal-browser --ve
 
 Inno Setup requires a numeric four-part version, so `0.11.1-win.1` becomes `0.11.1.1` in the
 installer. Versions outside this format use `0.0.0.0` for the installer version.
+The ZIP and EXE filenames both keep the payload version, for example
+`terminal-browser-0.11.1-win.1-windows-x64.zip` and
+`terminal-browser-0.11.1-win.1-windows-x64.exe`. The installer manifest records
+that version in `version` and the numeric Windows version in `installerVersion`.
+The packaging script's `-Version` overrides only the numeric Windows version.
 
 `terminal-browser upgrade` does not update the Windows fork. On Windows it stops and directs
 users to this fork's releases page.
@@ -286,7 +314,7 @@ For local development setup, the recommended approach is to ask a coding agent.
 
 Some terminal-browser CLI subcommands rely on terminal or multiplexer scripting features. To
 add support for another terminal, refer to the
-[existing implementations](https://github.com/zenbu-labs/terminal-browser/tree/main/terminals/src/terminals).
+[Pixel terminal implementations](https://github.com/fukuyori/pixel/tree/windows-v0.11.1/packages/pixel/src/terminal/terminals).
 
 ## Community
 

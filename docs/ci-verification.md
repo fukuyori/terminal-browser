@@ -152,13 +152,17 @@ and the clipboard test that only runs with `TB_TEST_CLIPBOARD=1`.
 
 A failure here stops the job before the installer and the upload.
 
-### 6. The installer is built and the artifacts are named as before
+### 6. The installer is built with the payload version in its filename
 
 Step **Build Windows installer** runs `package-windows-inno.ps1`, which needs
 the Inno Setup that the earlier choco step installed, and which maps
 `0.11.1-win.1` to `0.11.1.1`. A verification run's `verify-<sha>` version
 is not that format, so the installer version falls back to `0.0.0.0`.
 That is expected for a verification run and is not a failure.
+The ZIP and EXE filenames both use the payload version, including `verify-<sha>`.
+The installer manifest uses that value for `version` and the numeric Windows
+version for `installerVersion`. Earlier run records below retain the filenames
+produced before this naming change.
 
 The upload step takes its files from `terminal-browser/dist-release/`. The
 artifact is still named `windows-release-windows-x64`, which is what the
@@ -265,6 +269,9 @@ local harness is `tools/stall-diagnostics/check-verification-workflow.cjs`.
 - macOS/Linux builds and publishing are outside this Windows-only check.
 - Installation/uninstallation from the CI artifact remains unverified. Opening
   its initial setup screen and cancelling without installation were confirmed.
+  Installation/uninstallation of the later local signed package passed in
+  [a separate retest](windows-device-checks.md#signed-package-retest-on-2026-09-21);
+  that does not validate installation from this CI artifact.
 - Stable tag/bump dispatch, R2 publishing and GitHub Release creation were not run.
 - Nothing here checks signing, because a verification run does not sign. The
   payload's signatures are checked by `sign-windows.ps1` during a signed build.

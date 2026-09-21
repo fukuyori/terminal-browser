@@ -7,8 +7,30 @@ test.
 Work through a group at a time and note what happened. A group that fails
 tells you more than a whole list half-finished.
 
-The build is ready: `corepack pnpm -r build` has been run, and `cli/dist` and
-`browser/dist` are current. If you change anything, run it again.
+Before repeating a check, build the workspace with `corepack pnpm -r build`
+using the matching installed Pixel dependency. The records below describe the
+tested builds, not the current state of generated files in any checkout.
+
+## Current status (2026-09-21)
+
+- Group C's second-launch stall is fixed; C1–C6 passed in Ghostty, and the
+  real-process regression check passed again with the committed Pixel pin.
+- Production Ghostty E1–E5 and resize/input checks passed after the fixes;
+  [the current result table](#current-manual-results-after-the-fixes) supersedes
+  the intermediate failures below. The earlier
+  [unexpected browser exit](https://github.com/fukuyori/terminal-browser/issues/1)
+  remains unexplained despite the added lifecycle logs.
+- F and G passed for the builds identified in their dated records. The maintainer
+  rebuilt the signed packages with lifecycle logging and the installer naming fix;
+  [the later F retest](#signed-package-retest-on-2026-09-21) passed installation,
+  Ghostty launch/display/exit, uninstaller signing and uninstall cleanup.
+  Payload display (F2) and the WezTerm shortcut (F4) were not repeated on this build.
+- Stage 5's Windows CI and downloaded artifact checks passed; see
+  [the CI record](ci-verification.md#second-run-2026-09-21). Its unsigned artifacts
+  are separate from F's signed packages.
+- `pixel.commit` is `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`, including the
+  frame-mode and key-ordering fixes. WezTerm's embedded Image support is
+  [deferred](https://github.com/fukuyori/terminal-browser/issues/2).
 
 ## How to run it
 
@@ -376,7 +398,8 @@ Local evidence, kept outside Git:
 
 This is the bridge, and it is separate from D4. The bridge starts detached and
 then attaches to the console that called it. That startup path has been
-verified; the new Image rendering path still needs production device checks.
+verified. Production Image rendering and E1–E5/resize checks also passed on
+Ghostty; the earlier unexplained exit remains open.
 
 | # | Do this | Expect |
 | --- | --- | --- |
@@ -399,6 +422,10 @@ long as Claude Code does.
 
 ### Where group E stands
 
+The following is the chronological investigation record. A pending check or
+unresolved failure here describes that point in the investigation; use
+[the final result table](#current-manual-results-after-the-fixes) for current status.
+
 Initial result on 2026-09-20 with Claude Code 2.1.278 on Windows 11,
 before the Image migration:
 
@@ -414,8 +441,8 @@ and it is confirmed separately from the drawing.
 
 The drawing is a disagreement between the plugin's method and this build of
 Claude Code. See
-[the diagnosis](open-issue-plugin-placeholder-refused.md). Group E stays open
-until a page is actually drawn and E2 to E4 can be done.
+[the diagnosis](open-issue-plugin-placeholder-refused.md). At that point,
+E1–E4 remained blocked on drawing; the production retests below later passed.
 
 A separate Image API probe passed in Ghostty on 2026-09-20: direct base64
 PNG and RGBA displayed, and an overlaid input Client received pointer down/up
@@ -426,8 +453,8 @@ receiving clicks and the `a` key. It stopped at 1,257 accepted updates with
 zero denials, reopened successfully, and stopped again at 198 accepted updates
 with zero denials. These counts are API acceptances, not a frame-rate
 measurement. This is an isolated plugin check, not a pass for browser E1/E2;
-browser frame transport, bridge input forwarding and clipboard behavior remain
-to be checked. Details are in the diagnosis linked above.
+browser frame transport, bridge input forwarding and clipboard behavior still
+needed checks at that point. Details are in the diagnosis linked above.
 
 The ignored probe now has a `/browserprobe` command for a real 512 by 512
 browser, with an Image and an overlaid Client. A controlled adapter check
@@ -454,7 +481,7 @@ and the linked diagnosis.
 The diagnostic results do not mark production E1-E5 as passed. The diagnostic adapter stops its host
 and browser on close; production E5 deliberately hides and reuses them.
 
-The production `/browser` is now migrated in the working tree. Controlled
+The production `/browser` was then migrated to Image/Client. Controlled
 checks against its real bridge/browser passed at 48x24, 90x40, 32x16 and
 150x35 cells, including input after resize and two hide/reopen cycles with
 page contents retained. PNG is used normally; oversized images are reduced
@@ -464,12 +491,13 @@ refused. The subsequent production Ghostty check displayed Example Domain,
 followed its link by mouse, and opened the D4 input page. Actual IME input
 failed: the user reported a missing first character and duplicated remaining
 text; the screenshot shows `語入力テスト語入力テスト`. Input events were not
-logged in that run, so the failing layer is still undetermined. Production
-E2 is incomplete; clipboard, close/reopen and visual resize checks remain.
+logged in that run, so the failing layer was undetermined then. Production
+E2, clipboard, close/reopen and visual resize checks were still incomplete.
 Two subsequent physical IME attempts after restarting with input logging
 enabled produced the correct DOM value. The bridge received each text part
 once, and page events confirmed the second insertion without duplication.
-No input fix was applied between runs; the earlier failure remains unresolved.
+No input fix was applied between those runs; the failure remained unresolved
+until the later controlled reproduction and fixes described below.
 Directly replacing selected text with `再入力テスト` also passed on the third
 attempt, confirmed by the user, bridge log and DOM insertion events.
 The Apply button displayed that text, but E3 failed: selecting it and pasting
@@ -478,7 +506,8 @@ the production bridge's `clip.exe` writer. It now uses explicit UTF-8 input
 decoding and PowerShell `Set-Clipboard`. Real clipboard regression checks pass
 for Japanese, multiline text with a trailing newline, ASCII, emoji, shell
 metacharacters and empty text; CLI 28 passed / 0 skipped with the clipboard
-test enabled. The production Notepad retest after restart is still pending.
+test enabled. The production Notepad retest after restart was still pending
+at that point; the later result below records its pass.
 On restart, input and Apply passed, but drag selection failed. At inspection
 the browser was gone and the bridge reported `alive:false`, with no error;
 mouse events were still being received. The plugin retained a stale image.
@@ -507,10 +536,10 @@ original size, after shrinking and after enlarging again. The bridge logged
 89x53 -> 49x35 -> 89x53 cells (`production-resize-retest.log`). After enlargement,
 the user entered `サイズ変更テスト` through the IME, clicked Apply, and confirmed
 the same text appeared below the button. The resize and subsequent input checks
-passed; browser `31764-1` was still live at inspection. The earlier IME duplication
-and unexplained browser exit remain unresolved despite successful retries.
-This requires the local Pixel `PIXEL_EMBED_FRAMES` change, not yet represented
-by `pixel.commit`. Details and evidence are in the diagnosis linked above.
+passed; browser `31764-1` was still live at inspection. At that point, the earlier
+IME duplication and unexpected exit were still unresolved. These checks used
+the then-local Pixel `PIXEL_EMBED_FRAMES` change. It is now committed and included
+in the pin recorded above. Details and evidence are in the diagnosis linked above.
 
 Final pane close and Claude session exit passed. The tracked bridge, attached
 CLI and browser were all gone by 2026-09-20T13:22:06Z; evidence is in
@@ -531,7 +560,8 @@ entered `日本語入力テスト` and replaced it with `再入力テスト` aft
 without missing or duplicate text. The bridge logged the corrected
 `key:unknown` text-insertion path (`production-ime-final-manual.log`).
 The previous unexpected browser exit remains unexplained. Pixel's additional
-input-ordering change is local and also absent from `pixel.commit`.
+input-ordering change was local during this retest; it is now included in
+`pixel.commit` at `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
 
 The final IME-verification session also closed cleanly. At
 2026-09-20T13:36:06Z, bridge 8168, attached CLI 30352, browser 36480 and
@@ -539,7 +569,7 @@ its console process 37852 were all gone. The bridge logged intentional
 shutdown (`stopping:true`) at 13:36:04Z. Evidence:
 `tools/stall-diagnostics/production-final-session-exit.json`.
 
-Current manual results after the fixes:
+### Current manual results after the fixes
 
 | Check | Result |
 | --- | --- |
@@ -550,8 +580,9 @@ Current manual results after the fixes:
 | E5 | Passed: hide/reopen reused the browser; session exit left no tracked process |
 | Resize | Passed after notification fix: shrink/enlarge, animation, IME and clicking after enlargement |
 
-The earlier unexplained browser exit remains an open reliability issue;
-these manual passes do not identify its cause. F and G remain separate checks.
+The earlier [unexplained browser exit](https://github.com/fukuyori/terminal-browser/issues/1)
+remains an open reliability issue; these manual passes do not identify its
+cause. F and G results are recorded separately below.
 
 ## F. The built package and the installer
 
@@ -616,6 +647,47 @@ with the missing target during installation. The installed local dependency's
 `dist/bin.js` existed after the build. The summarized nine other warnings
 were not supplied and were not assessed. The checks above validate the
 completed artifacts, not every example's generated command link.
+
+### Signed package retest on 2026-09-21
+
+The maintainer rebuilt the signed payload and ZIP, then rebuilt the signed
+installer after the filename fix. Repository HEAD was
+`a4de37733ff1dc6c788cac516099579b0f7b5558`, with the documentation edits and
+`scripts/package-windows-inno.ps1` filename/manifest fix still uncommitted.
+The payload includes the lifecycle logging changes. `pixel.commit` remained
+`5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
+
+The ZIP manifest was written at 11:57:33 JST and the final installer manifest
+at 12:14:50 JST. These are local signed artifacts, separate from the unsigned
+`verify-326c74b` CI artifacts.
+
+| Artifact under `dist-release/` | Bytes | SHA-256 |
+| --- | --- | --- |
+| `terminal-browser-0.11.1-win.1-windows-x64.zip` | 210146612 | `5fd9938b293649ff270a4fe975944d8d07db5f7dae2bf59028798bad2ecc6aa9` |
+| `terminal-browser-0.11.1-win.1-windows-x64.exe` | 145096064 | `570249698622fbe2ad70cbaa5c875a511393ef6c67e3c9897a54ec7c729b75a3` |
+
+Both manifests matched the artifact sizes and SHA-256 hashes. Both use
+`version: 0.11.1-win.1`; the installer manifest separately records
+`installerVersion: 0.11.1.1`. The installer's file/product version was
+`0.11.1.1`, and its Authenticode signature was `Valid`.
+
+| Check | Observed result |
+| --- | --- |
+| F1 | All ten EXE/DLL/native-addon files in the payload had `Valid` signatures; the renamed installer was also `Valid` |
+| F2 | Payload `--version` reported `terminal-browser 0.11.1-win.1`; drawing directly from the payload was not repeated |
+| F3 | User installed the renamed EXE; installed VERSION and launcher reported `0.11.1-win.1`, uninstall registration reported `0.11.1.1`, and all 93 payload files matched the installed files by SHA-256 |
+| F4 | The WezTerm Start menu shortcut was not retested on this build; the earlier result above applies to the earlier artifacts |
+| F5 | User confirmed Example Domain displayed from `terminal-browser https://example.com` in a new Ghostty PowerShell, then confirmed Ctrl+Shift+Q returned to PowerShell |
+| F6 | Installed `unins000.exe` had a `Valid` Authenticode signature |
+| F7 | After the user uninstalled, the installation directory and HKCU uninstall registration were absent; no matching user PATH entry or terminal-browser shortcut remained in the user Start menu or desktop |
+
+The application was left uninstalled. This retest does not establish clean-machine
+installation, repeat the Claude Code plugin checks, or resolve the unexplained
+browser exit. No release was published as part of these checks.
+
+The old `terminal-browser-0.11.1.1-windows-x64.exe` from 11:59 JST remained in
+`dist-release/` during verification. It is not the installer referenced by the
+current manifest and must be excluded from distribution.
 
 ## G. The console identifier
 

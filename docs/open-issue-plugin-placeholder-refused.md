@@ -1,11 +1,17 @@
-# Claude Code refuses the character the plugin draws with
+# Claude Code placeholder refusal and the Image migration
 
-Current status (2026-09-20): the production plugin has been migrated to
-Image/blit in the working tree. Production Ghostty drawing, Japanese copying,
-resize/input and close/reopen checks passed. The fix for split IME commits
-also passed controlled checks and the physical IME retest; an
-earlier unexpected browser exit remains unexplained. The original failure and diagnostic checks below are retained as
-evidence; see [the production migration](#production-migration).
+Current status (2026-09-21): the production Image/Client migration and IME,
+clipboard and resize fixes are committed in `1d68925`; the matching Pixel
+fixes are pinned at `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
+Production Ghostty E1–E5 and resize/input checks passed, including the physical
+IME retest. The earlier [unexpected browser exit](https://github.com/fukuyori/terminal-browser/issues/1)
+remains unexplained; lifecycle logging and retention were added in `05fef3e`.
+WezTerm's embedded Image support is [deferred](https://github.com/fukuyori/terminal-browser/issues/2).
+
+The original failure and chronological diagnostic checks below are retained
+as evidence. Intermediate pending checks and test counts refer to the build
+being tested at that time. For current manual results, see
+[the device result table](windows-device-checks.md#current-manual-results-after-the-fixes).
 
 Found working through group E of `windows-device-checks.md`. The bridge starts
 and answers, but nothing is drawn: Claude Code rejects the tree the plugin's
@@ -265,7 +271,7 @@ hide-and-reuse behavior specified by E5.
 
 ## Production migration
 
-The working tree now uses the same Image/Client separation in the production
+The production migration uses the same Image/Client separation in the
 plugin. `surface.tsx` only handles size and input; the rejected placeholder
 generator was removed. The shared production input mapper preserves
 multi-character commits and sub-cell pointer coordinates.
@@ -282,10 +288,10 @@ pane close/reopen are ignored. Image refusal is displayed as an error.
 
 Pixel's `packages/pixel/src/root.tsx` now recognizes `PIXEL_EMBED_FRAMES=1` to
 deliver frames to the host instead of writing graphics to the caller's TTY.
-No native rebuild was needed. This local Pixel change is not committed, and
-`pixel.commit` still names `7dd82824000cf93f2f57b63efa3baa78d6062dbc`; that pin
-alone does not reproduce the new mode. Both Pixel changes were later committed and
-`pixel.commit` now names `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`. The local TypeScript build and installed
+No native rebuild was needed for this change. At the time of the initial check,
+it was uncommitted and the old `7dd8282` pin did not include it. The frame-mode
+and key-ordering changes were subsequently committed; since 2026-09-21,
+`pixel.commit` names `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`. The local TypeScript build and installed
 file dependency were refreshed for these checks. The pre-existing Pixel
 clipboard change was left intact.
 
@@ -311,8 +317,8 @@ Checks: store 8 passed, browser 32 passed, CLI 27 passed / 1 clipboard test
 skipped. New regression checks cover frame-file ownership and copying before
 acknowledgement, PNG pixel preservation, incompressible/oversized frame bounds,
 IME chunks and pointer fractions. Plugin type checking and the Pixel
-TypeScript build passed. Production Ghostty E1-E5 and visual resizing are
-still pending; the earlier diagnostic passes do not replace them.
+TypeScript build passed. Production Ghostty E1–E5 and visual resizing were
+still pending at this point; their subsequent manual passes are recorded below.
 
 The subsequent production Ghostty check displayed Example Domain, followed
 its link on a mouse click, and opened `d4-manual-input.html`. Actual IME input
@@ -331,14 +337,15 @@ of each part. Before that commit, `ni` was typed and removed with Backspace,
 so this run did not test replacing selected text directly with an IME commit.
 Evidence is in `tools/stall-diagnostics/production-ime-retries.log` and
 `production-ime-retry-dom.json`. No input behavior was changed between the
-failure and these retries; the original missing/duplicated text remains
-unexplained and must not be marked fixed.
+failure and these retries; the missing/duplicated text was still unexplained
+then. Those retries alone did not establish a fix; the later controlled
+reproduction, changes and physical retest are recorded below.
 
 A third attempt directly replaced the selected text with `再入力テスト`.
 The user confirmed replacement, and DOM tracing showed `再` replacing the
 selection once, followed by one paste of `入力テスト`. The bridge received
 the same two parts once. Evidence: `production-ime-replacement-dom.json`
-in the same diagnostic directory. The initial failure remains unresolved.
+in the same diagnostic directory. The initial failure was still unresolved then.
 
 The Apply button then displayed `再入力テスト`. Selecting that output and
 pasting into Notepad produced `慌eQ娚ﾆ0ｹ0ﾈ0`. The bridge logged one clipboard
@@ -358,7 +365,7 @@ the short Japanese string, multiline text including a trailing newline, ASCII,
 emoji, shell metacharacters and empty text. Comparisons are exact, without
 trimming or normalizing line endings. The original clipboard text was restored.
 With `TB_TEST_CLIPBOARD=1`, all 28 CLI tests passed, with no skips. Restarting
-the production plugin and repeating the Notepad check is still required.
+the production plugin and repeating the Notepad check was still required then.
 
 On that restart, input and Apply were reported successful, but dragging the
 output was not. The bridge received mouse down, left-button movement and up;
@@ -389,8 +396,8 @@ selected the two Japanese lines on `image-probe/browser-page.html` and
 confirmed Notepad preserved both their text and the line break. Close/reopen
 (E5) then passed: the pane closed, reopened with the animation running, and
 accepted `再開テスト` through the physical IME. The registry still showed
-browser `30408-1`, confirming reuse. Visual resizing remains pending.
-These passes do not resolve the earlier IME duplication or unexplained exit.
+browser `30408-1`, confirming reuse. Visual resizing was still pending then.
+These passes alone did not resolve the earlier IME duplication or unexpected exit.
 
 Shrinking the Ghostty window kept the animation running, and clicking Apply
 still displayed `再開テスト`. Enlarging it again left only `Loading browser…`.
@@ -409,7 +416,7 @@ resize without input, rejection of old-size frames, and rendering a new-size
 frame. CLI: 30 passed, 1 clipboard test skipped; plugin type checking passed.
 The bridge now logs requested size changes in debug mode. This proves the
 notification defect in a controlled reproduction; the physical enlarge/shrink
-retest is still required to establish that it resolves the reported stall.
+retest was still required then to establish that it resolved the reported stall.
 
 The subsequent physical retest passed: the user confirmed animation before
 shrinking, after shrinking and after enlarging again, without the Loading
@@ -450,9 +457,9 @@ the final run (`e-production-run-opztL3/ime-chunks.json`); an earlier whole-run
 clipboard comparison included mouse-selection operations, so it was replaced
 by before/after comparisons around each commit. CLI: 31 passed, 1 clipboard
 test skipped; plugin type checking, Pixel TypeScript build and two Pixel input
-tests passed. This adds a second required local Pixel change beyond
-`PIXEL_EMBED_FRAMES`; `pixel.commit` still does not include either change.
-It does as of `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
+tests passed. This added a second required Pixel change beyond
+`PIXEL_EMBED_FRAMES`. Both were local during the test and are now included in
+`pixel.commit` at `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
 The physical IME retest then passed: the user entered `日本語入力テスト` and
 replaced it using Ctrl+A with `再入力テスト`, with no missing or duplicated text.
 The bridge logged a single-character key followed by `key:unknown` text in
@@ -545,8 +552,9 @@ The signed artifacts verified in group F predate this logging addition.
   drew on this one.
 - How the production PNG/RGBA transport performs during sustained use in
   Claude Code on Ghostty. Larger frames, resizing and the inline-byte limit
-  passed controlled checks, but visual quality and responsiveness still need
-  manual confirmation. The type definitions restrict `shm` to POSIX terminals.
+  passed controlled checks, and the basic visual resize/input checks passed
+  manually. Extended-session visual quality and responsiveness remain unverified.
+  The type definitions restrict `shm` to POSIX terminals.
 - Whether the updated production plugin consistently preserves actual IME input
   and pointer alignment during visual resizing.
   Single-line and multiline Japanese copying passed manually after the encoding fix; the
@@ -555,11 +563,16 @@ The signed artifacts verified in group F predate this logging addition.
 
 ## Next
 
-Group E stays open. The Image/Client diagnostic adapter has passed the manual
-checks above, and the production migration has passed controlled integration
-checks. Production E1, E3, E4, close/reopen, resizing and input after resizing
-now pass manually, as do session-exit cleanup and the corrected split IME
-commits. The earlier unexplained browser exit remains open.
+Production E1–E5, resizing/input, corrected IME commits and session-exit cleanup
+passed manually. The remaining reliability work is a limited reproduction
+attempt for [the unexpected exit](https://github.com/fukuyori/terminal-browser/issues/1)
+using the current logged build, and sustained-use checks. Preserve the evidence
+listed above if it recurs; successful retries alone do not identify its cause.
+
+WezTerm-specific work remains in [its terminal-browser issue](https://github.com/fukuyori/terminal-browser/issues/2)
+and [the terminal issue](https://github.com/fukuyori/wezterm/issues/1).
+
+## Historical compatibility questions
 
 This is a compatibility problem between the plugin's way of drawing and this
 build of Claude Code, not a fault placed on either. Whether the same Claude
@@ -567,7 +580,9 @@ Code refuses it on macOS or Linux has not been tried, so it is not known to
 be a Windows problem, and the plugin has not been shown to be wrong anywhere
 else. Saying whose to fix it is would be ahead of what has been seen.
 
-What would settle it:
+These questions concern the original rejected-placeholder path, which the
+production plugin no longer uses. They are not pending E1–E5 acceptance checks.
+What would settle them:
 
 - Run the same plugin against Claude Code 2.1.278 on another OS. If it is
   refused there too, the drawing method and this build simply disagree.

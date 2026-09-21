@@ -9,7 +9,7 @@ Windowsターミナル内で動作する本物のブラウザです。
 ## オリジナル版との関係
 
 このリポジトリは、[zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser)
-をWindows向けに移植したフォークです。現在のリリースは上流v0.11.1を基にしています。このREADMEは
+をWindows向けに移植したフォークです。現在の開発ブランチは上流v0.11.1を基にしています。このREADMEは
 Windowsフォークだけを対象としています。
 
 | 項目 | 上流v0.11.1 | このWindowsフォーク |
@@ -18,15 +18,20 @@ Windowsフォークだけを対象としています。
 | 描画 | kitty graphicsによる描画 | WezTermのファイルフレーム転送とWindows固有のiTerm2 PNGフォールバック |
 | 配布 | オリジナルのリリース処理 | Inno Setupインストーラー、バージョン付きポータブルZIP、Authenticode署名、Windowsリリース自動化 |
 | SSH・セットアップ | オリジナルのSSH・skill処理 | Windows OpenSSHと`tar.exe`への対応、Windows互換のskill setup |
-| バージョン | `v0.11.1` | 上流の基準版とWindows改訂番号を表す`0.11.1-win.1` |
+| バージョン | `v0.11.1` | 上流の基準版とWindows改訂番号を表す開発対象版`0.11.1-win.1` |
 
 上流から取り込んだ機能と各Windowsリリース固有の変更は、
 [変更履歴](CHANGELOG.ja.md)を参照してください。
 
+2026-09-21時点で、`0.11.1-win.1` は GitHub Release 未公開です。
+Windows CI のビルド・テスト・成果物確認は通過しましたが、未署名の
+`verify-326c74b` 成果物は検証用です。[CI結果](docs/ci-verification.md)と
+[実機確認記録](docs/windows-device-checks.md)を参照してください。
+
 ## Windows対応（実験的）
 
-このフォークはWindows x64ネイティブビルドを提供します。PowerShell 7とWezTerm nightlyで動作確認
-しています。
+このフォークはWindows x64ネイティブビルドを提供します。PowerShellから、Windows版Ghosttyでの
+実機確認と、WezTermでの通常のブラウザの表示・終了を確認しています。
 
 Windows版には次が含まれます。
 
@@ -43,7 +48,10 @@ Windows版には次が含まれます。
 
 ### 必要な環境
 
-WezTerm nightlyをインストールしてください。最速の描画経路を使用するには、`wezterm.lua`でkitty
+通常のブラウザにはWindows版GhosttyまたはWezTerm nightlyを使用します。Claude Codeプラグインの
+埋め込みImage表示はGhosttyとClaude Code 2.1.278で確認済みで、WezTerm対応は
+[保留中](https://github.com/fukuyori/terminal-browser/issues/2)です。
+WezTermのファイルフレーム経路を使用するには、`wezterm.lua`でkitty
 keyboardとkitty graphicsを有効にしてから、WezTermを再起動します。
 
 ```lua
@@ -105,13 +113,20 @@ terminal-browserを表示しているペインで`Ctrl+Q`を押します。`Ctrl
 
 Windows では端末のコンソールから起動してください。ブリッジは起動元の終了後もそのコンソールへの
 接続を保持し、接続できない場合は起動エラーを返します。CLI と対応する Pixel ネイティブビルドが
-必要です。実際のプラグインの描画・操作は、移行の実機確認事項として残っています。
+必要です。本番プラグインのGhostty実機確認では、描画・IME入力・日本語と複数行のコピー・
+サイズ変更後の入力・非表示と再表示・セッション終了時の後片付けが通過しました。
+以前発生した[予期しないブラウザ終了](https://github.com/fukuyori/terminal-browser/issues/1)の原因は
+未特定で、これらの通過は長時間利用での信頼性を確定するものではありません。
 
 ### Windows版のソースビルド
 
+[fukuyori/pixel](https://github.com/fukuyori/pixel) を隣の `../pixel` に配置し、
+[pixel.commit](pixel.commit) の完全なSHAをチェックアウトしてください。
+ビルドスクリプトがPixelのインストール・ビルド後に本体の依存をインストールします。
+terminal-browserのリポジトリで実行します。
+
 ```powershell
-corepack pnpm install --frozen-lockfile
-.\scripts\build-windows.ps1
+.\scripts\build-windows.ps1 -RequireCleanPixel
 .\scripts\package-windows-inno.ps1
 ```
 
@@ -119,16 +134,22 @@ corepack pnpm install --frozen-lockfile
 `dist-release\terminal-browser-<version>-windows-x64.zip`も作成します。
 
 ```powershell
-.\scripts\build-windows.ps1 -Zip
+.\scripts\build-windows.ps1 -Zip -RequireCleanPixel
 ```
 
-ZIPは任意作成で、サイズは約190 MBです。インストーラー作成には必要ありません。固定バージョンの
+ZIPは任意作成で、確認済みCIビルドのサイズは約209 MBです。インストーラー作成には必要ありません。固定バージョンの
 `agent-browser`は自動的にビルドされ、同梱されます。別の実行ファイルを使用する場合だけ
 `-AgentBrowserPath C:\path\to\agent-browser.exe`を指定します。
 
 `package-windows-inno.ps1`の実行にはInno Setup 6が必要です。出力は
 `dist-release\terminal-browser-<version>-windows-x64.exe`です。インストーラーは英語と日本語、
 ユーザー単位のインストール、ユーザー`PATH`の変更、WezTermショートカットに対応しています。
+
+この例は未署名の開発用成果物を作成します。配布用はメンテナーが両スクリプトに `-Sign` を付けて作成します。
+[バージョン・リリース確認項目](docs/version-update-checklist.md)を参照してください。
+2026-09-21 に、メンテナーが終了診断ログとインストーラー名の修正を含む署名済み成果物を再作成しました。
+インストール、Ghostty での起動・表示・終了、アンインストールの確認は通過しています。
+成果物のハッシュと今回再確認していない項目は、[署名済みパッケージの再確認記録](docs/windows-device-checks.md#signed-package-retest-on-2026-09-21)を参照してください。
 
 ### Windows版のバージョン
 
@@ -140,6 +161,11 @@ Windowsフォークのバージョンは、上流バージョンとフォーク�
 
 Inno Setupでは4要素の数値バージョンが必要なため、`0.11.1-win.1`はインストーラー内で`0.11.1.1`に
 なります。この形式以外のバージョンでは、インストーラーのバージョンとして`0.0.0.0`を使用します。
+ZIP と EXE のファイル名は本体のバージョンで揃え、
+`terminal-browser-0.11.1-win.1-windows-x64.zip` と
+`terminal-browser-0.11.1-win.1-windows-x64.exe` になります。
+インストーラーのマニフェストは `version` に本体のバージョン、`installerVersion` に
+Windows 用の数値バージョンを記録します。作成スクリプトの `-Version` は数値バージョンだけを上書きします。
 
 `terminal-browser upgrade`はWindowsフォークを自動更新しません。Windowsで実行すると処理を中止し、
 このフォークのリリースページを案内します。
@@ -283,7 +309,7 @@ WindowsではOpenSSH Clientが`PATH`に必要です。SSH設定のホストエ�
 
 terminal-browser CLIの一部のサブコマンドは、ターミナルまたはマルチプレクサーのスクリプト機能を使用
 します。別のターミナルに対応する場合は、
-[既存の実装](https://github.com/zenbu-labs/terminal-browser/tree/main/terminals/src/terminals)を参照してください。
+[Pixel側の端末実装](https://github.com/fukuyori/pixel/tree/windows-v0.11.1/packages/pixel/src/terminal/terminals)を参照してください。
 
 ## コミュニティ
 

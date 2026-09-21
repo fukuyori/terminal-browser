@@ -2,6 +2,28 @@
 
 Windows 対応フォーク (`windows-native`) を upstream `zenbu-labs/terminal-browser` v0.11.1 に追従させるための計画。
 
+## 現在の状態（2026-09-21）
+
+移行先は `windows-v0.11.1`。Pixel の pin は
+`5bb53b956ec2b9d1373e56f8c0c8869a720668bd` で、フレームモードとキー処理順序の修正を含む。
+以下の調査・作業手順には、移行前の upstream の制約や当時の未実施事項を履歴として残している。
+現在の到達点は次の記録を参照する。
+
+- [段階5の CI 記録](ci-verification.md#second-run-2026-09-21): 本体 `326c74b` で
+  ビルド・テスト・インストーラー作成・成果物アップロードが成功。ダウンロード後の
+  manifest 照合、ランチャー確認、インストーラーの起動・キャンセルも通過。
+- [実機確認](windows-device-checks.md#current-status-2026-09-21): 群Cの停止は修正済みで
+  C1〜C6通過。Ghosttyでの本番プラグイン E1〜E5・リサイズ後の入力、F・Gの確認も
+  各記録のビルドで通過。以前の予期しない終了の原因は未特定。
+- [終了問題](https://github.com/fukuyori/terminal-browser/issues/1)は再現確認が残る。
+  [WezTerm の埋め込み対応](https://github.com/fukuyori/terminal-browser/issues/2)は保留。
+- 開発対象版 `0.11.1-win.1` は GitHub Release 未公開。終了診断ログと
+  インストーラー名の修正を含む署名済み成果物をメンテナーが再作成し、
+  インストール・Ghostty での起動と表示と終了・アンインストールまで通過。
+  [今回のF群の記録](windows-device-checks.md#signed-package-retest-on-2026-09-21)に
+  ハッシュ・未コミット変更を含む作成元・再確認していない項目を記載した。
+  stable CI の署名・R2公開・GitHub Release作成は今回の検証対象外。
+
 ## 調査時点のリビジョン
 
 | 対象 | リビジョン |
@@ -13,7 +35,7 @@ Windows 対応フォーク (`windows-native`) を upstream `zenbu-labs/terminal-
 
 分岐点から v0.11.1 までの upstream の変更は 35 コミット、233 ファイル、+3,616 / −43,507 行。
 
-## 判明している前提
+## 調査時点で判明していた前提
 
 ### エンジンが別リポジトリに移った
 
@@ -42,7 +64,7 @@ import の対応はほぼ 1 対 1。
 | `pixel-terminals`（14 箇所） | `@zenbu-labs/pixel/terminal`（16 箇所） |
 | `./ssh` | `@zenbu-labs/pixel/ssh` |
 
-### pixel は Windows に対応していない
+### 調査対象の upstream pixel は Windows に対応していなかった
 
 - `packages/native/` にあるのは `darwin-arm64`、`darwin-x64`、`linux-arm64`、`linux-x64` のみ
 - `electron/config.json` と `.github/workflows/release.yml` の対象も macOS と Linux のみ
@@ -576,10 +598,11 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
 
 手順 3 は `pixel.commit` の SHA で `fukuyori/pixel` を checkout する。この SHA が
 リモートに無ければ、`actions/checkout` は `No commit found` で失敗する。
-2026-09-20 時点で `fukuyori/pixel` に `windows-v0.11.1` ブランチは無く、
+2026-09-20 の調査時点では `fukuyori/pixel` に `windows-v0.11.1` ブランチは無く、
 `f9b8746`・`2ad2ead`・`7002209` はローカルにしか無い。
 
-したがって検証の順序は次になる。
+当時の未 push 状態を解消する順序は次のとおりだった。現在は以下の両方を push 済みで、
+2回目の CI 実行も成功している。
 
 1. pixel の `windows-v0.11.1` を push（`pixel.commit` の指す SHA がリモートに載る）
 2. terminal-browser の `windows-v0.11.1` を push
@@ -642,7 +665,12 @@ GitHub Release が作られないことと、外部公開されないことは�
 - `pixel.exe` からの起動を、開発環境・配布パッケージ（`dist-release/terminal-browser`）・インストール後の 3 か所で確認すること
 - スタートメニューのショートカットからの起動
 
-## 未確認事項とリスク
+## 計画時点の調査課題とリスク（履歴）
+
+以下は移行前に挙げた調査項目。現在の未完了作業の一覧ではない。
+描画・配布物の配置・本番プラグインの基本操作は後続の CI と実機記録に結果があり、
+再ビルド時の native の一致はビルドスクリプトで検査している。
+個別の低水準 API の挙動、別 OS、将来の upstream 変更まで検証済みとは扱わない。
 
 - 標準 Electron 44.2.0 での描画（段階 1 で確認する）
 - 名前付きパイプに対する `fs.existsSync` の挙動（Node 24.14.1 でのみ確認済み。段階 1 で実際のランタイムで確認する）
