@@ -2,9 +2,9 @@
 
 The Windows job in `.github/workflows/release.yml` was rewritten to build from
 two checkouts: this repository and the `fukuyori/pixel` commit that
-`pixel.commit` names. The first run on 2026-09-21 built the Windows payload
-and ZIP, then failed in the application's typecheck. See
-[the recorded result](#first-run-2026-09-21) and the remaining checks below.
+`pixel.commit` names. The second run on 2026-09-21 passed the Windows build,
+tests, installer creation and artifact upload. See
+[the successful run](#second-run-2026-09-21) and the remaining checks below.
 
 Use `verify_windows=true` for this check. It runs only preparation and the
 Windows job, saving ZIP/installer artifacts in GitHub Actions without signing,
@@ -25,10 +25,10 @@ Get-Content pixel.commit
 The SHA in `pixel.commit` must exist on GitHub; the Pixel branch may have
 advanced beyond it. Verify the exact pin with `gh api repos/fukuyori/pixel/commits/<sha>`.
 If the commit is missing, `actions/checkout` fails with `No commit found` and
-nothing else in the job runs. On 2026-09-21, both terminal-browser `bcac8d6`
+nothing else in the job runs. On 2026-09-21, both terminal-browser `326c74b`
 and the pinned Pixel `5bb53b956ec2b9d1373e56f8c0c8869a720668bd` were present
-on GitHub. The first verification run used those commits; the subsequent
-`pixel-store` build-order fix still needs a new run after it is pushed.
+on GitHub. The second verification run used those commits and passed with the
+`pixel-store` build-order fix.
 
 ## What a run costs
 
@@ -68,8 +68,8 @@ Check that the run's `headSha` matches the commit you intended to verify.
 
 ## What the run has to show
 
-Use these checks to assess each run. The first run passed items 1–4, reached
-the application typecheck in item 5, and did not reach item 6.
+Use these checks to assess each run. The second run passed all six. The first
+run passed items 1–4 and stopped in the application typecheck in item 5.
 
 ### 1. The pixel commit is read and fetched
 
@@ -203,6 +203,56 @@ Local evidence is under `tools/stall-diagnostics/clean-typecheck-d393fd5aede6439
 (ignored diagnostic output). This verifies the missing-output case locally,
 not the complete runner or a fresh dependency installation.
 
+## Second run: 2026-09-21
+
+[Run 35552876822](https://github.com/fukuyori/terminal-browser/actions/runs/35552876822)
+passed at terminal-browser `326c74b13309be7e8321a197cc7ad1b791fcede0` with
+Pixel `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
+
+- Preparation took four seconds and resolved `verify-326c74b` on the dev channel.
+  The Windows job took 21 minutes 57 seconds, including payload/ZIP build,
+  tests, installer creation and artifact upload.
+- The macOS/Linux, worker and release jobs and signing step were skipped.
+  GitHub still listed only tags `0.8.0-win.1` and `0.5.8-win.1` and release
+  `0.5.8-win.1` after the run.
+- The installer version fell back to `0.0.0.0` as expected for the verification
+  version. The unsigned artifacts are for CI validation, not distribution.
+
+| Runner suite | Passed | Skipped/ignored | Failed |
+| --- | --- | --- | --- |
+| Pixel JavaScript | 51 | 15 | 0 |
+| Pixel Rust | 268 + 51 | 1 ignored | 0 |
+| store | 21 | 0 | 0 |
+| browser | 32 | 0 | 0 |
+| cli | 35 | 1 | 0 |
+
+The uploaded artifact is `windows-release-windows-x64` (ID `10619402837`),
+352,746,437 bytes, expiring at `2026-12-20T02:03:24Z`. Stage 5's Windows CI
+execution passed; this does not verify the stable release path.
+
+### Downloaded artifact checks
+
+The artifact was downloaded on 2026-09-21. The first download failed with a
+connection reset; the retry completed. Both contained files matched their
+respective manifests:
+
+| File | Bytes | SHA-256 |
+| --- | --- | --- |
+| `terminal-browser-verify-326c74b-windows-x64.zip` | 209303292 | `333d69b4ac37c42587810e5eace854b74180fb6243d3965722d28becd7378595` |
+| `terminal-browser-0.0.0.0-windows-x64.exe` | 144321384 | `eefc79fffc8993d5eea2f1c38448c6e62a6921a42b209e22b617c25e89547046` |
+
+The ZIP's entries were checked before extraction. The payload contained its
+launcher, Node runtime, CLI/browser bundles, Electron and native addon.
+`VERSION` was `verify-326c74b`, `CHANNEL` was `dev`, and the extracted launcher
+returned `terminal-browser verify-326c74b` for `--version`; `--help` also passed.
+The installer's product/file version was `0.0.0.0` and Authenticode status was
+`NotSigned`. The user subsequently launched the downloaded installer and
+confirmed its initial setup screen appeared, then confirmed cancellation and
+closure without installing.
+
+Downloaded files, the extracted payload and `verification.json` are under
+`tools/stall-diagnostics/ci-run-35552876822/` (ignored local diagnostic output).
+
 ## Known gaps
 
 Local validation on 2026-09-21 passed `actionlint` 1.7.12 and eleven executions
@@ -212,12 +262,9 @@ release bumps/worker deployment/tag refs, and ordinary branch/main/tag/release
 version resolution. Job and signing gates were also checked. The ignored
 local harness is `tools/stall-diagnostics/check-verification-workflow.cjs`.
 
-- A new run must confirm the store build-order fix and complete the application's
-  typecheck/tests, installer creation and artifact upload. Stage 5 remains incomplete.
-- Download the next successful run's artifacts and compare their sizes/hashes
-  with the manifests before recording artifact verification as complete.
 - macOS/Linux builds and publishing are outside this Windows-only check.
-- The full successful run's duration is unknown; the first failed after about
-  16 minutes, before installer creation and upload.
+- Installation/uninstallation from the CI artifact remains unverified. Opening
+  its initial setup screen and cancelling without installation were confirmed.
+- Stable tag/bump dispatch, R2 publishing and GitHub Release creation were not run.
 - Nothing here checks signing, because a verification run does not sign. The
   payload's signatures are checked by `sign-windows.ps1` during a signed build.

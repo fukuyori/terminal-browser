@@ -554,7 +554,7 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
 `CARGO_TARGET_DIR` はジョブ全体に設定されているので、pixel の `build:native` と
 9 の `cargo test` は同じターゲットディレクトリを使う。
 
-#### 状態: 初回 CI は本体型チェックで失敗、修正後の再実行待ち
+#### 状態: 2回目の Windows CI 実行検証は通過
 
 実行手順と見るべき点は `docs/ci-verification.md` にまとめた。以下はその要点。
 
@@ -564,7 +564,13 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
 （268 + 51 通過・1 ignored）まで成功した。本体の型チェックは `store/dist` がなく
 `pixel-store` を解決できずに失敗したため、直前に store のビルドを追加した。
 生成物を退避したローカル検証では同じ失敗を再現し、追加後の型チェックとテスト
-（88 通過・1 スキップ）が通過した。修正後の CI 実行は未確認。
+（88 通過・1 スキップ）が通過した。
+
+同日の [2回目の CI](https://github.com/fukuyori/terminal-browser/actions/runs/35552876822)
+は本体 `326c74b` と同じ Pixel pin で成功した。prepare は4秒、Windows ジョブは
+21分57秒。ペイロード・ZIP、本体の型チェック・テスト（88通過・1スキップ）、
+インストーラー作成、成果物アップロードまで通過した。
+段階5の Windows CI 実行検証は通過として扱い、署名・stable 公開経路の検証とは分ける。
 
 **検証の前提: 取得対象のコミットが push されていること**
 
@@ -586,7 +592,7 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
 上記の未 push という前提は解消済み。後続の `verify_windows=true` オプションでは
 Windows のビルド・テスト・Actions 成果物保存だけを行い、署名・タグ作成・R2 公開・
 Worker 配備を省く。このモードは `bcac8d6` で push・初回実行済み。
-store のビルド順序の修正を push してから新しい実行を開始する。
+store のビルド順序の修正は `326c74b` で push し、2回目の実行で通過した。
 ローカルでの workflow 検証と、GitHub 上での実行検証は区別する。
 
 **どう動かすか**
@@ -609,13 +615,19 @@ store のビルド順序の修正を push してから新しい実行を開始�
 `verify_windows` を指定しない従来の手動実行では、`bump=none` でも R2 に公開する。
 GitHub Release が作られないことと、外部公開されないことは区別する。
 
-**初回 CI で確認したことと残件**
+**CI で確認したことと残件**
 
 - Pixel の pin 検査、ワークスペース外の `CARGO_TARGET_DIR` を使う native ビルド、
   native の3コピーのハッシュ一致検査は成功した。
 - 署名・macOS/Linux ビルド・Worker・Release の各処理は skipped だった。
-- 開始から失敗まで約16分。本体テスト・インストーラー作成・成果物アップロードは
-  未実行。修正後の CI 完走と、ダウンロードした成果物の manifest 照合が残る。
+- 初回は約16分で失敗、2回目は Windows ジョブが21分57秒で完走した。
+- ダウンロードした ZIP・インストーラーは manifest のサイズ・SHA-256 と一致し、
+  ZIP の展開と同梱ランチャーの `--version`・`--help` も通過した。
+  詳細は `docs/ci-verification.md` に記録した。CI インストーラーの最初の画面の表示は
+  利用者が確認し、インストールせずキャンセルして閉じる操作も確認済み。
+  CI 成果物からのインストール・アンインストールは未確認。
+  未署名・バージョン `0.0.0.0` の検証用で、配布には使わない。
+- タグ・bump 指定による stable 経路（署名・R2 公開・GitHub Release 作成）は未検証。
 
 ### 段階 6: 実機確認
 
