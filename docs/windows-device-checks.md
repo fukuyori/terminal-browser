@@ -568,6 +568,47 @@ F2 and F5 are the other two places electron is resolved from, after the
 development path that groups A to E use. All three have to reach a
 `pixel.exe`.
 
+### Package and installer results on 2026-09-21
+
+F1-F7 passed with the signed artifacts built by the user using the commands
+above. The repository HEAD was `1d68925d581b68c9f8880720d5cbe743b836063c`,
+with `pixel.commit` set to `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
+The pending change in this repository was the G-group record in this document.
+
+| Artifact under `dist-release/` | Bytes | SHA-256 |
+| --- | --- | --- |
+| `terminal-browser-0.11.1-win.1-windows-x64.zip` | 210137449 | `f8cc4a249f3eb58ddcbbba0711f083897e2bdd00ac82b750f60007f230e4a2c4` |
+| `terminal-browser-0.11.1.1-windows-x64.exe` | 145088376 | `046a713e7683308054c44ee74465f3ec431d496d917ab2d6886ccf2d5685a5ed` |
+
+Both artifacts matched their manifest sizes and hashes. The installer had a
+`Valid` Authenticode signature and file/product version `0.11.1.1`.
+The payload launcher reported `terminal-browser 0.11.1-win.1` and its help
+command completed successfully.
+
+| Check | Observed result |
+| --- | --- |
+| F1 | Payload `electron/pixel.exe` and native `pixel.node` signatures were `Valid`; bundled Node and agent-browser signatures were also `Valid` |
+| F2 | User confirmed Example Domain displayed from the payload launcher in Ghostty; Ctrl+Shift+Q returned to PowerShell |
+| F3 | Existing `0.8.0-win.1` installation was upgraded at `%LOCALAPPDATA%/Programs/terminal-browser`; installed VERSION and launcher reported `0.11.1-win.1`, and uninstall registration reported `0.11.1.1` |
+| F4 | User confirmed the installed `terminal-browser (WezTerm)` Start menu shortcut opened the terminal and browser, then closed successfully |
+| F5 | A new Ghostty PowerShell resolved `terminal-browser` to the installed `bin/terminal-browser.cmd`; user confirmed Example Domain displayed and Ctrl+Shift+Q returned to PowerShell |
+| F6 | Installed `unins000.exe` signature was `Valid`; installed `pixel.exe` and `pixel.node` signatures were also `Valid` |
+| F7 | After the user uninstalled, the installation directory, user PATH entry, HKCU uninstall registration and Start menu directory were all absent |
+
+This exercised an upgrade followed by uninstall, not installation on a clean
+machine. The application was left uninstalled after F7; the artifacts remain
+under `dist-release/`. F4 used the standalone browser in WezTerm, not the
+Claude Code Image path whose capability restriction remains separate.
+
+The build log supplied by the user included unsupported-platform warnings
+for macOS/Linux native packages and a missing `pixel` bin target under the
+Pixel example's `node_modules/.bin`. The script removes Pixel's generated
+`dist` before installation and builds it afterward; this order is consistent
+with the missing target during installation. The installed local dependency's
+`dist/bin.js` existed after the build. The summarized nine other warnings
+were not supplied and were not assessed. The checks above validate the
+completed artifacts, not every example's generated command link.
+
 ## G. The console identifier
 
 Ghostty and WezTerm name their panes differently, and a terminal that names no
@@ -624,6 +665,41 @@ holds one. Judge it by whether the terminal works.
 | G3-5 | Waiting | Neither launching nor quitting hangs |
 
 Only G3-2 through G3-5 failing needs fixing.
+
+### Manual results on 2026-09-21
+
+G1-G3 passed in Ghostty using the development CLI. The user reported the
+outputs and confirmed the visible behavior; WezTerm was not checked in this run.
+
+For G1, `scope` remained `0x0d752eacbe284059` after ordinary commands,
+window resizing and moving focus away and back. It matched
+`GHOSTTY_SURFACE_ID`, and `daemonName()` returned
+`daemon-0x0d752eacbe284059`. A child `cmd` inherited the same surface id.
+The initial `WEZTERM_PANE` and `WT_SESSION` values were both null.
+
+For G2, the original pane stayed open while the other surfaces were created:
+
+| Surface | Scope |
+| --- | --- |
+| Original pane | `0x0d752eacbe284059` |
+| New tab | `0xf65b842f4bc3783e` |
+| Split pane | `0x9475d8d7a41a7692` |
+| New window | `0x94ee87e1743ecfb1` |
+
+All four scopes differed. The split was performed through Ghostty itself;
+this does not validate the CLI's automatic split support.
+
+For G3, the process lists before and after closing all Ghostty windows and
+restarting showed node PIDs 1564 and 30344, both with the same reported
+start time of 2026-09-21 08:41:01. Neither list contained a pixel process.
+These lists did not identify which node processes were terminal-browser
+daemons, so reuse of an old daemon was not established.
+
+In the restarted terminal, the development CLI displayed
+`tools/stall-diagnostics/d4-manual-input.html`. Clicking its input, entering
+`再起動テスト` and pressing Apply displayed the same text below the button.
+Ctrl+Shift+Q returned to PowerShell; no launch or exit hang was reported.
+These results do not resolve the separate unexpected browser exit in group E.
 
 ## What to report
 
