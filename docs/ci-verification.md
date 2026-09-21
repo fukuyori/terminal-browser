@@ -2,13 +2,14 @@
 
 The Windows job in `.github/workflows/release.yml` was rewritten to build from
 two checkouts: this repository and the `fukuyori/pixel` commit that
-`pixel.commit` names. It has not been run yet. This is how to run it and what
-to look at.
+`pixel.commit` names. The first run on 2026-09-21 built the Windows payload
+and ZIP, then failed in the application's typecheck. See
+[the recorded result](#first-run-2026-09-21) and the remaining checks below.
 
 Use `verify_windows=true` for this check. It runs only preparation and the
 Windows job, saving ZIP/installer artifacts in GitHub Actions without signing,
 creating tags, publishing to R2/GitHub Releases, or deploying the worker.
-The option must first be committed and pushed to the branch being checked.
+Push the current workflow fixes to the branch before starting a new run.
 
 ## Before you start
 
@@ -24,9 +25,10 @@ Get-Content pixel.commit
 The SHA in `pixel.commit` must exist on GitHub; the Pixel branch may have
 advanced beyond it. Verify the exact pin with `gh api repos/fukuyori/pixel/commits/<sha>`.
 If the commit is missing, `actions/checkout` fails with `No commit found` and
-nothing else in the job runs. On 2026-09-21, both terminal-browser `05fef3e`
+nothing else in the job runs. On 2026-09-21, both terminal-browser `bcac8d6`
 and the pinned Pixel `5bb53b956ec2b9d1373e56f8c0c8869a720668bd` were present
-on GitHub. This does not include the later verification-mode workflow changes.
+on GitHub. The first verification run used those commits; the subsequent
+`pixel-store` build-order fix still needs a new run after it is pushed.
 
 ## What a run costs
 
@@ -66,8 +68,8 @@ Check that the run's `headSha` matches the commit you intended to verify.
 
 ## What the run has to show
 
-These are the parts that are new and have never executed. Each one either
-works on the first run or does not.
+Use these checks to assess each run. The first run passed items 1–4, reached
+the application typecheck in item 5, and did not reach item 6.
 
 ### 1. The pixel commit is read and fetched
 
@@ -86,9 +88,8 @@ Step **Build Windows payload and ZIP** runs `build-windows.ps1` with
 - `git -C $pixel rev-parse HEAD` equals `pixel.commit`
 - `git -C $pixel status --porcelain` is empty
 
-The second one is the one to watch. `actions/checkout` leaves a detached HEAD
-at the requested commit, which should make `rev-parse HEAD` return exactly
-that commit, but that has not been observed. A mismatch throws
+The first run passed the check against the pinned Pixel SHA in the runner's
+detached checkout. A mismatch throws
 `pixel is at <a> but pixel.commit asks for <b>`.
 
 ### 3. pixel builds on the runner
@@ -99,8 +100,8 @@ with `--release`.
 
 `CARGO_TARGET_DIR` is set for the whole job to a directory outside the
 workspace. pixel's `build-native.mjs` reads it, so the built library should be
-found there rather than under `pixel/engine/target`. This combination has not
-been run.
+found there rather than under `pixel/engine/target`. The first run built
+successfully with this configuration.
 
 The same step also downloads electron through pixel's `postinstall.mjs`, which
 on Windows takes the published build and unpacks it with
@@ -123,7 +124,19 @@ where it is used`, naming all three. This is the check that a stale copy in
 
 Step **Test** runs after the build, because the build is what installs both
 checkouts. It runs, in order: pixel's typecheck, pixel's tests, `cargo test`
-on `pixel/engine`, this repository's typecheck, and this repository's tests.
+on `pixel/engine`, `pixel-store`'s build, this repository's typecheck, and this
+repository's tests. Each command's exit status is checked before continuing.
+
+The payload uses esbuild to bundle directly from `store/src`, so it does not
+create `store/dist/index.d.ts`, which the workspace packages need. Running
+`store`'s `typecheck` does not create it either (`tsc --noEmit`). A clean local
+checkout needs the same preparation before checking types:
+
+```powershell
+corepack pnpm --filter pixel-store build
+if ($LASTEXITCODE -ne 0) { throw "pixel-store build failed" }
+corepack pnpm -r typecheck
+```
 
 Historical local counts (compare the tested commit, not just the totals):
 
@@ -162,6 +175,34 @@ A stable release without the secret fails on purpose: `stable Windows releases
 require WINDOWS_CODESIGN_PFX`. Signed builds for release are the maintainer's,
 run locally with `-Sign`, or a tagged run once the secret is in place.
 
+## First run: 2026-09-21
+
+[Run 35551427952](https://github.com/fukuyori/terminal-browser/actions/runs/35551427952)
+checked terminal-browser `bcac8d69236c9a6193a583fafe6b1d98f73fa474` with
+Pixel `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
+
+- Preparation resolved `verify-bcac8d6` on the dev channel. The macOS/Linux,
+  worker, release and signing steps/jobs were skipped.
+- Both checkouts, toolchain setup, Inno Setup installation, and the Windows
+  payload/ZIP build succeeded, including the build script's native-copy hash check.
+- Pixel typecheck passed; its JavaScript tests passed 51 with 15 skips and no
+  failures. Rust reported 268 plus 51 passed, with one ignored test.
+- The application typecheck failed with TS2307 (`Cannot find module
+  'pixel-store'`) and cascading type errors because `store/dist` had not been
+  generated. Its tests, installer creation and artifact upload did not run.
+- The run took about 16 minutes before failing. The ZIP was built on the
+  runner but was not uploaded, so downloadable artifacts remain unverified.
+
+The fix adds `corepack pnpm --filter pixel-store build` and an exit-code check
+immediately before the application's recursive typecheck. Package scripts
+retain their existing `typecheck` semantics. Local verification temporarily
+removed `store/dist`, `cli/dist` and `browser/dist`, reproduced TS2307, then
+passed the store build, recursive typecheck and recursive tests (88 passed,
+one clipboard skip). The original generated directories were restored.
+Local evidence is under `tools/stall-diagnostics/clean-typecheck-d393fd5aede6439ebbf398af11b946cb/`
+(ignored diagnostic output). This verifies the missing-output case locally,
+not the complete runner or a fresh dependency installation.
+
 ## Known gaps
 
 Local validation on 2026-09-21 passed `actionlint` 1.7.12 and eleven executions
@@ -171,11 +212,12 @@ release bumps/worker deployment/tag refs, and ordinary branch/main/tag/release
 version resolution. Job and signing gates were also checked. The ignored
 local harness is `tools/stall-diagnostics/check-verification-workflow.cjs`.
 
-- No runner execution has happened, so its build and artifact behavior is unconfirmed.
-- The new mode has not run on GitHub yet. Local workflow validation is not
-  evidence that runner builds, tests or artifact uploads succeed.
+- A new run must confirm the store build-order fix and complete the application's
+  typecheck/tests, installer creation and artifact upload. Stage 5 remains incomplete.
+- Download the next successful run's artifacts and compare their sizes/hashes
+  with the manifests before recording artifact verification as complete.
 - macOS/Linux builds and publishing are outside this Windows-only check.
-- The run's duration is unknown. pixel's native build and electron download
-  are new work for this job.
+- The full successful run's duration is unknown; the first failed after about
+  16 minutes, before installer creation and upload.
 - Nothing here checks signing, because a verification run does not sign. The
   payload's signatures are checked by `sign-windows.ps1` during a signed build.

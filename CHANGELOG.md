@@ -6,6 +6,9 @@ Notable changes to the Windows fork of terminal-browser are documented here.
 
 ## Unreleased
 
+- Build `pixel-store` before the Windows CI typecheck so clean runners can
+  resolve its generated declarations.
+
 - Add a Windows-only CI verification mode that builds and tests both repositories
   and uploads ZIP/installer artifacts without signing, tagging or publishing.
 

@@ -523,6 +523,7 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
    7. `terminal-browser/` で `package-windows-inno.ps1`（既存の署名手順と `-Sign` の受け渡しは維持する）
    8. 成果物をアップロードする（既存の 223〜230 行目）。すべてのテストが成功したあとに限る
 5. **テスト**
+   - 本体の型チェック前に `corepack pnpm --filter pixel-store build` を実行し、失敗時は停止する。ペイロードの esbuild は `store/src` から直接バンドルするため、依存パッケージの型解決に必要な `store/dist/index.d.ts` は別途生成する
    - 現行の `corepack pnpm -r typecheck` を `terminal-browser/` で引き続き実行する。`store` を含む全パッケージの型チェックを維持する
    - 169 行目の `cargo test --manifest-path engine/Cargo.toml --workspace` を、`pixel/engine/Cargo.toml` を対象にする形へ置き換える
    - `pixel/` で `pnpm --filter @zenbu-labs/pixel typecheck` と `pnpm --filter @zenbu-labs/pixel test`、`terminal-browser/` で `corepack pnpm -r test`
@@ -542,7 +543,7 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
 | 6 | Inno Setup を導入 | — |
 | 7 | 署名証明書を準備 | — |
 | 8 | `build-windows.ps1 -Zip -RequireCleanPixel`（署名鍵があれば `-Sign`） | `terminal-browser` |
-| 9 | テスト（pixel の typecheck・test・`cargo test`、terminal-browser の typecheck・test） | ワークスペース直下 |
+| 9 | テスト（pixel の typecheck・test・`cargo test`、pixel-store の build、本体の typecheck・test） | ワークスペース直下 |
 | 10 | `package-windows-inno.ps1` | `terminal-browser` |
 | 11 | 成果物をアップロード | — |
 
@@ -553,11 +554,17 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
 `CARGO_TARGET_DIR` はジョブ全体に設定されているので、pixel の `build:native` と
 9 の `cargo test` は同じターゲットディレクトリを使う。
 
-#### 状態: 実装済み、CI 実行での検証待ち
+#### 状態: 初回 CI は本体型チェックで失敗、修正後の再実行待ち
 
 実行手順と見るべき点は `docs/ci-verification.md` にまとめた。以下はその要点。
 
-ワークフローは書き換えたが、**まだ一度も動かしていない**。正しさは実行しないと分からない。
+2026-09-21 の [初回 CI](https://github.com/fukuyori/terminal-browser/actions/runs/35551427952)
+は本体 `bcac8d6` と Pixel `5bb53b9` で実行した。Windows ペイロードと ZIP の
+ビルド、Pixel の型チェック・JS テスト（51 通過・15 スキップ）、Rust テスト
+（268 + 51 通過・1 ignored）まで成功した。本体の型チェックは `store/dist` がなく
+`pixel-store` を解決できずに失敗したため、直前に store のビルドを追加した。
+生成物を退避したローカル検証では同じ失敗を再現し、追加後の型チェックとテスト
+（88 通過・1 スキップ）が通過した。修正後の CI 実行は未確認。
 
 **検証の前提: 取得対象のコミットが push されていること**
 
@@ -578,7 +585,8 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
 `5bb53b956ec2b9d1373e56f8c0c8869a720668bd` が GitHub に存在することを確認した。
 上記の未 push という前提は解消済み。後続の `verify_windows=true` オプションでは
 Windows のビルド・テスト・Actions 成果物保存だけを行い、署名・タグ作成・R2 公開・
-Worker 配備を省く。この workflow 変更を push してから実行する。
+Worker 配備を省く。このモードは `bcac8d6` で push・初回実行済み。
+store のビルド順序の修正を push してから新しい実行を開始する。
 ローカルでの workflow 検証と、GitHub 上での実行検証は区別する。
 
 **どう動かすか**
@@ -601,12 +609,13 @@ Worker 配備を省く。この workflow 変更を push してから実行する
 `verify_windows` を指定しない従来の手動実行では、`bump=none` でも R2 に公開する。
 GitHub Release が作られないことと、外部公開されないことは区別する。
 
-**確認できていないこと**
+**初回 CI で確認したことと残件**
 
-- `actions/checkout` が作る detached HEAD に対して、`build-windows.ps1` の
-  `git rev-parse HEAD` が `pixel.commit` と一致するか
-- `CARGO_TARGET_DIR` をワークスペース外に置いた状態で pixel の `build:native` が通るか
-- windows ランナーでの所要時間（pixel のビルドが加わる）
+- Pixel の pin 検査、ワークスペース外の `CARGO_TARGET_DIR` を使う native ビルド、
+  native の3コピーのハッシュ一致検査は成功した。
+- 署名・macOS/Linux ビルド・Worker・Release の各処理は skipped だった。
+- 開始から失敗まで約16分。本体テスト・インストーラー作成・成果物アップロードは
+  未実行。修正後の CI 完走と、ダウンロードした成果物の manifest 照合が残る。
 
 ### 段階 6: 実機確認
 
