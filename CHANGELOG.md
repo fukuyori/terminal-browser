@@ -6,6 +6,13 @@ Notable changes to the Windows fork of terminal-browser are documented here.
 
 ## Unreleased
 
+- Record CLI, daemon and bridge lifecycle events with timestamps, process IDs
+  and session IDs. Distinguish a session-close notification from a lost daemon
+  connection, and record shutdown requests, signals and idle expiry. The earlier
+  unexpected browser exit remains unexplained. Rotate each process's logs at
+  1 MiB with two generations, and remove stopped-process logs beyond seven days,
+  128 files or 32 MiB. Live processes' logs are protected.
+
 - Send multi-character Claude IME commits through text insertion instead of
   shared clipboard pastes. Requires the matching Pixel key-ordering change.
   Repeated split-commit checks and physical IME entry/replacement passed

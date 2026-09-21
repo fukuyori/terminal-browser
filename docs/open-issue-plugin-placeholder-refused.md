@@ -467,6 +467,75 @@ by 2026-09-20T13:36:06Z. Its shutdown was logged as intentional. Evidence:
 `production-final-session-exit.json`. This is the second observed clean
 session-exit cleanup; it does not explain the earlier unexpected exit.
 
+## Exit logging on 2026-09-21
+
+The original bridge log was examined again with permission. It records a
+launch at 12:55:58.108Z, IME input at 12:56:15.535Z and mouse events through
+12:57:32.948Z on 2026-09-20. That interval contains no exit or clipboard
+message. The saved failure state is `alive:false`, `frame:null`, `error:null`.
+The daemon stderr contained only DevTools listening messages. Neither log
+identifies the original termination time or cause.
+
+The old `if (code && !stopping)` handler did not log an exit with code 0 or
+null, and suppressed error reporting while stopping. Consequently the saved
+state does not establish a zero exit code. The attached CLI can exit 0 after
+a session-close notification, a daemon socket close, or its signal-driven
+close wait. These paths must be distinguished by events, not exit code alone.
+The incident ran with uncommitted Image changes on top of `4a6daeb`, not that
+commit's exact source tree.
+
+New `lifecycle-<pid>-<run>.jsonl` files in `LOGS_DIR` record UTC time, PID,
+parent PID, a process-run identifier and the component (`cli`, `daemon`,
+`bridge`). Each process uses its own current file and one `.1.jsonl` generation,
+each limited to 1 MiB. Logging is always enabled for these
+process lifetimes and writes synchronously so an immediate exit retains the
+record. A write failure is ignored without changing application exit behavior.
+The new records exclude request bodies, URLs, tokens, input and clipboard text.
+
+Stopped-process logs are removed oldest first once they exceed seven days
+since the last write, 128 files or 32 MiB combined. Both generations count.
+Live PIDs and unknown process status are protected, including old runs whose
+PID has been reused. Cleanup runs on the first write, later writes at most
+once per minute, and normal exit. Failed deletions are retried later. Only
+recognized regular lifecycle files are eligible; other logs are untouched.
+An oversized record is replaced by a size-only entry. A failed rotation
+preserves existing generations and drops the pending record, keeping the size
+bound. Preserve both generations promptly after a failure, before cleanup.
+
+| Component | Evidence |
+| --- | --- |
+| CLI | Daemon child start/exit when launched here; attached session and daemon PID; `session closed` versus `daemon connection closed`; socket errors; signal-driven close request and wait expiry |
+| Daemon | Session open/close; client close/shutdown requests; connection loss and orphan cleanup; signals; idle/stale-build exits; session shutdown reasons such as quit key, last tab, startup failure and Pixel quit request |
+| Bridge | Child CLI PID, exit code and signal; frame join/disconnection; close request, signal or idle expiry as its shutdown reason; child termination and wait expiry |
+
+`pixel root exited` includes `shutdownRequested`, distinguishing a callback
+after application-requested shutdown from one without that request. It does
+not establish the lower-level Pixel cause. Process exit hooks and uncaught
+exception monitors add evidence when those callbacks can run; forced OS
+termination can leave no final record.
+
+On recurrence, preserve all lifecycle files, daemon `stderr.log`, the bridge
+log and `/state` before restarting. Match the bridge's `childPid` to the CLI
+record's `pid`, then use `daemonPid` and `session` to find the daemon records.
+Use `run` and timestamps as well as PID because Windows can reuse PIDs.
+Record the preceding action and process creation times without dumping full
+command lines, which may contain the bridge token. Polling `/state` extends
+the bridge's idle lifetime, so do not poll it during an idle-exit check.
+
+Controlled regressions exercise the actual bridge and attached CLI with the
+production daemon protocol and a stand-in for rendering/session contents.
+They distinguish a session close from daemon exit even though both attached
+CLI exits are 0, cover the daemon signal handler and bridge-triggered cleanup,
+and check that tokens and page URLs are absent from the new records. Logger
+checks cover immediate exit, uncaught failure and an unwritable destination.
+Retention checks cover UTF-8 byte limits, multiple rotations, oversized records,
+age/count/size limits, protected PIDs, failed deletion/rotation and four concurrent
+writers. They inspect the actual files rather than just cleanup callbacks.
+Store, CLI and browser regression suites passed: 88 passed, one opt-in
+clipboard test skipped. Their TypeScript builds and plugin type checking passed.
+These are not a reproduction or resolution of the unexplained physical exit.
+The signed artifacts verified in group F predate this logging addition.
+
 ## What is not known
 
 - Whether this is Windows only. Nothing here is platform specific, and the

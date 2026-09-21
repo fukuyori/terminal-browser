@@ -11,6 +11,8 @@ import {
   ensureDataDir,
   instanceKey,
   listApps,
+  logLifecycle,
+  observeProcessExit,
   registerApp,
   unregisterApp,
 } from "pixel-store";
@@ -222,6 +224,10 @@ function spawnDaemon() {
   } finally {
     fs.closeSync(stderr);
   }
+  logLifecycle("cli", "daemon child started", { daemonPid: child.pid });
+  child.on("exit", (code, signal) => {
+    logLifecycle("cli", "daemon child exited", { daemonPid: child.pid, code, signal });
+  });
   child.unref();
 }
 
@@ -248,6 +254,7 @@ interface DaemonReply {
   event?: string;
   code?: number;
   sessions?: number;
+  pid?: number;
 }
 
 function nextReply(socket: net.Socket, onLine: (reply: DaemonReply) => void): void {
@@ -370,34 +377,52 @@ async function kill(pid: number, why: string): Promise<number> {
 }
 
 async function attachHere(argv: string[]): Promise<never> {
+  observeProcessExit("cli");
   const tty = process.env.PIXEL_TTY ?? ownTtyPath();
   if (!tty) throw new Error("not running on a tty");
   const { socket, reply } = await openSession(argv, tty);
   if (reply.ok === false || !reply.session) {
+    logLifecycle("cli", "session refused");
     socket.destroy();
     throw new Error(reply.error ?? "daemon refused the session");
   }
+  const identity = { session: reply.session, daemonPid: reply.pid ?? null };
+  logLifecycle("cli", "session attached", identity);
   nextReply(socket, (message) => {
-    if (message.event === "closed") process.exit(message.code ?? 0);
+    if (message.event === "closed") {
+      logLifecycle("cli", "session closed", { ...identity, code: message.code ?? 0 });
+      process.exit(message.code ?? 0);
+    }
   });
-  socket.on("close", () => process.exit(0));
-  socket.on("error", () => process.exit(1));
+  socket.on("close", () => {
+    logLifecycle("cli", "daemon connection closed", identity);
+    process.exit(0);
+  });
+  socket.on("error", (error: NodeJS.ErrnoException) => {
+    logLifecycle("cli", "daemon connection error", { ...identity, errorCode: error.code });
+    process.exit(1);
+  });
   process.on("SIGWINCH", () => {
     try {
       socket.write('{"cmd":"resize"}\n');
     } catch {}
   });
-  const requestClose = () => {
+  const requestClose = (signal: string) => {
+    logLifecycle("cli", "close requested", { ...identity, signal });
     try {
       socket.write('{"cmd":"close"}\n');
     } catch {
+      logLifecycle("cli", "close write failed", identity);
       process.exit(0);
     }
-    setTimeout(() => process.exit(0), 2000);
+    setTimeout(() => {
+      logLifecycle("cli", "close wait expired", identity);
+      process.exit(0);
+    }, 2000);
   };
-  process.on("SIGINT", requestClose);
-  process.on("SIGTERM", requestClose);
-  process.on("SIGHUP", requestClose);
+  process.on("SIGINT", () => requestClose("SIGINT"));
+  process.on("SIGTERM", () => requestClose("SIGTERM"));
+  process.on("SIGHUP", () => requestClose("SIGHUP"));
   return new Promise<never>(() => {});
 }
 
@@ -405,7 +430,10 @@ async function openHere(argv: string[]): Promise<never> {
   await sshSetup(argv).catch((error) =>
     fail(error instanceof Error ? error.message : String(error)),
   );
-  return attachHere(argv).catch((error) => fail(`could not start the browser: ${String(error)}`));
+  return attachHere(argv).catch((error) => {
+    logLifecycle("cli", "attach failed");
+    return fail(`could not start the browser: ${String(error)}`);
+  });
 }
 
 async function sshSetup(argv: string[]): Promise<void> {

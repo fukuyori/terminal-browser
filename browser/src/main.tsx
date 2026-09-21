@@ -5,10 +5,11 @@ import path from "node:path";
 import { app, screen } from "electron";
 
 import { runDaemon } from "./daemon";
-import { LOGS_DIR, ensureDataDir } from "pixel-store";
+import { LOGS_DIR, ensureDataDir, logLifecycle, observeProcessExit } from "pixel-store";
 import { appLog } from "@zenbu-labs/pixel";
 import { claimProfile } from "./profile";
 import { registerScheme } from "./pages/scheme";
+observeProcessExit("daemon");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
@@ -58,6 +59,7 @@ void (async () => {
   );
   await runDaemon(cdpPort);
 })().catch((error) => {
+  logLifecycle("daemon", "startup failed");
   process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
   app.exit(1);
 });

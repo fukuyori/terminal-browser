@@ -5,7 +5,7 @@ import path from "node:path";
 import { app } from "electron";
 
 // why is this defined in pixel store?
-import { DAEMON_SOCKET } from "pixel-store";
+import { DAEMON_SOCKET, logLifecycle, observeProcessExit } from "pixel-store";
 import { createSession } from "./session/session";
 import type { SessionHandle } from "./session/session";
 import { servePages } from "./pages/scheme";
@@ -32,9 +32,14 @@ export function buildStamp(): string {
 }
 
 export async function runDaemon(cdpPort: number | null): Promise<void> {
+  observeProcessExit("daemon");
+  const exit = (code: number, reason: string) => {
+    logLifecycle("daemon", "exit requested", { code, reason });
+    app.exit(code);
+  };
   if (await socketAlive()) {
     process.stderr.write("terminal-browser daemon already running\n");
-    app.exit(3);
+    exit(3, "already running");
     return;
   }
   if (process.platform !== "win32") {
@@ -56,22 +61,23 @@ export async function runDaemon(cdpPort: number | null): Promise<void> {
   const scheduleIdleExit = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      if (sessions.size === 0) app.exit(0);
+      if (sessions.size === 0) exit(0, "idle timeout");
     }, IDLE_EXIT_MS);
   };
   scheduleIdleExit();
 
-  const stopEverything = (code: number) => {
+  const stopEverything = (code: number, signal: string) => {
+    logLifecycle("daemon", "signal received", { code, signal, sessions: sessions.size });
     for (const open of [...sessions.values()]) {
       try {
         open.close();
       } catch {}
     }
     sessions.clear();
-    setTimeout(() => app.exit(code), 200);
+    setTimeout(() => exit(code, signal), 200);
   };
-  process.on("SIGINT", () => stopEverything(130));
-  process.on("SIGTERM", () => stopEverything(143));
+  process.on("SIGINT", () => stopEverything(130, "SIGINT"));
+  process.on("SIGTERM", () => stopEverything(143, "SIGTERM"));
 
   const server = net.createServer((connection) => {
     let key: string | null = null;
@@ -98,9 +104,10 @@ export async function runDaemon(cdpPort: number | null): Promise<void> {
         }
         if (message.cmd === "open" && !session) {
           if (message.build && message.build !== build) {
+            logLifecycle("daemon", "stale build requested", { sessions: sessions.size });
             reply({ ok: false, error: "stale" });
             connection.end();
-            if (sessions.size === 0) app.exit(0);
+            if (sessions.size === 0) exit(0, "stale build");
             return;
           }
           if (!message.tty) {
@@ -111,6 +118,7 @@ export async function runDaemon(cdpPort: number | null): Promise<void> {
           if (idleTimer) clearTimeout(idleTimer);
           key = `${process.pid}-${++seq}`;
           const sessionKey = key;
+          logLifecycle("daemon", "session opening", { session: sessionKey });
           try {
             session = createSession({
               tty: message.tty,
@@ -120,6 +128,7 @@ export async function runDaemon(cdpPort: number | null): Promise<void> {
               cwd: message.cwd ?? process.cwd(),
               cdpPort,
               onClose: (code) => {
+                logLifecycle("daemon", "session closed", { session: sessionKey, code });
                 sessions.delete(sessionKey);
                 reply({ event: "closed", code });
                 connection.end();
@@ -127,27 +136,35 @@ export async function runDaemon(cdpPort: number | null): Promise<void> {
               },
             });
           } catch (error) {
+            logLifecycle("daemon", "session creation failed", { session: sessionKey });
             reply({ ok: false, error: String(error) });
             connection.end();
             scheduleIdleExit();
             return;
           }
           sessions.set(sessionKey, session);
+          logLifecycle("daemon", "session opened", { session: sessionKey });
           reply({ ok: true, session: sessionKey, pid: process.pid });
         } else if (message.cmd === "resize") {
           session?.nudgeResize();
         } else if (message.cmd === "close") {
+          logLifecycle("daemon", "client requested close", { session: key });
           session?.close();
         } else if (message.cmd === "shutdown") {
+          logLifecycle("daemon", "client requested shutdown", { sessions: sessions.size });
           reply({ ok: true, sessions: sessions.size });
           connection.end();
-          setTimeout(() => app.exit(0), 50);
+          setTimeout(() => exit(0, "shutdown command"), 50);
         }
       }
     });
-    connection.on("error", () => {});
-    connection.on("close", () => {
+    connection.on("error", (error: NodeJS.ErrnoException) => {
+      logLifecycle("daemon", "client connection error", { session: key, errorCode: error.code });
+    });
+    connection.on("close", (hadError) => {
+      if (key) logLifecycle("daemon", "client connection closed", { session: key, hadError, active: sessions.has(key) });
       if (key && sessions.has(key)) {
+        logLifecycle("daemon", "closing orphan session", { session: key });
         const orphan = sessions.get(key)!;
         sessions.delete(key);
         orphan.close();
@@ -155,11 +172,12 @@ export async function runDaemon(cdpPort: number | null): Promise<void> {
       }
     });
   });
-  server.on("error", (error) => {
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    logLifecycle("daemon", "server error", { errorCode: error.code });
     process.stderr.write(`terminal-browser daemon socket error: ${error}\n`);
-    app.exit(1);
+    exit(1, "server error");
   });
-  server.listen(DAEMON_SOCKET);
+  server.listen(DAEMON_SOCKET, () => logLifecycle("daemon", "listening"));
 }
 
 function socketAlive(): Promise<boolean> {

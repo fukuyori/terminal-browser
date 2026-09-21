@@ -10,7 +10,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { attachWindowsConsole, callerTty } from "@zenbu-labs/pixel/terminal";
-import { ipcEndpoint } from "pixel-store";
+import { ipcEndpoint, logLifecycle, observeProcessExit } from "pixel-store";
 
 import { installedVersion } from "./upgrade";
 import { FrameHost } from "./claude-frame-host";
@@ -208,8 +208,13 @@ class Bridge {
       this.picture = null;
       this.encoded = null;
       log("browser frame connection closed", { alive: this.alive, stopping: this.stopping });
+      logLifecycle("bridge", "frame connection closed", { childPid: this.child?.pid, alive: this.alive, stopping: this.stopping });
     };
-    this.host.onError = error => { this.error = error.message; log("frame host error", error.message); };
+    this.host.onError = error => {
+      this.error = error.message;
+      log("frame host error", error.message);
+      logLifecycle("bridge", "frame host error", { childPid: this.child?.pid, errorName: error.name });
+    };
   }
 
   state() {
@@ -243,6 +248,7 @@ class Bridge {
     const message = parsed.data;
     switch (message.type) {
       case "join":
+        logLifecycle("bridge", "frame connection joined", { childPid: this.child?.pid, browserPid: message.pid ?? null });
         this.send({ ...this.sizeMessage("init"), focused: true });
         break;
       case "title":
@@ -313,8 +319,10 @@ class Bridge {
       this.alive = false;
       this.error = error.message;
       log("browser process error", { pid: child.pid, error: error.message });
+      logLifecycle("bridge", "browser child error", { childPid: child.pid, errorCode: (error as NodeJS.ErrnoException).code });
     });
     child.on("exit", (code, signal) => {
+      logLifecycle("bridge", "browser child exited", { childPid: child.pid, code, signal, stopping: this.stopping });
       log("browser process exited", { pid: child.pid, code, signal, stopping: this.stopping, stderr: stderr.trim() });
       if (this.child !== child) return;
       this.child = null;
@@ -327,9 +335,13 @@ class Bridge {
           : "Browser stopped. Run /browser <url> to reopen.";
       }
     });
+    child.on("close", (code, signal) => {
+      logLifecycle("bridge", "browser child streams closed", { childPid: child.pid, code, signal });
+    });
     this.child = child;
     this.alive = true;
     log("browser process started", { pid: child.pid });
+    logLifecycle("bridge", "browser child started", { childPid: child.pid });
   }
 
   private async browserKey(): Promise<string | null> {
@@ -401,11 +413,13 @@ class Bridge {
     this.send({ type: "visible", value: false });
   }
 
-  close(): void {
+  close(reason: string): void {
     if (this.stopping) return;
     this.stopping = true;
     const child = this.child;
+    logLifecycle("bridge", "shutdown requested", { reason, childPid: child?.pid, alive: this.alive });
     const finish = () => {
+      logLifecycle("bridge", "shutdown finished");
       try {
         this.host.stop();
       } catch {}
@@ -413,9 +427,11 @@ class Bridge {
       process.exit(0);
     };
     if (child && child.exitCode === null) {
+      logLifecycle("bridge", "child termination requested", { childPid: child.pid, signal: "SIGTERM" });
       child.kill("SIGTERM");
       child.once("exit", () => setTimeout(finish, 200));
       setTimeout(() => {
+        logLifecycle("bridge", "child termination wait expired", { childPid: child.pid, signal: "SIGKILL" });
         try {
           child.kill("SIGKILL");
         } catch {}
@@ -487,7 +503,7 @@ function routes(bridge: Bridge): Record<string, (body: unknown) => Reply | Promi
       return [200, bridge.state()];
     },
     "POST /close": () => {
-      setTimeout(() => bridge.close(), 0);
+      setTimeout(() => bridge.close("close request"), 0);
       return [200, {}];
     },
   };
@@ -496,6 +512,7 @@ function routes(bridge: Bridge): Record<string, (body: unknown) => Reply | Promi
 const IDLE_EXIT_MS = 60_000;
 
 function serve(argv: string[]): void {
+  observeProcessExit("bridge");
   const tty = flag(argv, "--tty");
   const socket = flag(argv, "--socket");
   const cellOverride = parseCell(flag(argv, "--cell"));
@@ -539,11 +556,12 @@ function serve(argv: string[]): void {
     const address = server.address();
     if (!address || typeof address === "string") process.exit(1);
     bridge.port = address.port;
+    logLifecycle("bridge", "listening", { port: address.port });
     process.stdout.write(JSON.stringify({ port: bridge.port }) + "\n");
   });
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => bridge.close());
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => bridge.close(signal));
   setInterval(() => {
-    if (Date.now() - lastSeen > IDLE_EXIT_MS) bridge.close();
+    if (Date.now() - lastSeen > IDLE_EXIT_MS) bridge.close("idle timeout");
   }, 10_000).unref();
 }
 

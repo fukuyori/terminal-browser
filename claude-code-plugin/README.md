@@ -156,4 +156,53 @@ Even if your terminal supports the required graphics feature, if you are running
 - claude code sets a very high min width for the chat area, so its sometimes not possible to resize the browser to the size you want
 - the plugin depends on the experimental function hooks claude code API, which is unstable, so the plugin may break between releases
 
+## Diagnosing an unexpected exit
+
+The CLI, daemon and bridge write `lifecycle-<pid>-<run>.jsonl` files in the
+installation's `LOGS_DIR` automatically, without enabling input debugging.
+Each record has a UTC timestamp, PID, parent PID and process-run identifier.
+CLI session records also identify the daemon PID and session; the bridge
+records the PID of its attached CLI child.
+
+For a development checkout, locate the directory from its root:
+
+```powershell
+node -p "require('./store/dist/paths.js').LOGS_DIR"
+```
+
+By default it is under `~/.local/state/terminal-browser-dev-<id>/logs` for a
+checkout and `~/.local/state/terminal-browser-<id>/logs` for an installed copy.
+`XDG_STATE_HOME` changes the base directory. Preserve the lifecycle files,
+`stderr.log`, and `~/.terminal-browser/logs/claude-code-plugin-bridge.log`
+before restarting after a failure. See the [exit investigation](../docs/open-issue-plugin-placeholder-refused.md#exit-logging-on-2026-09-21)
+for how to distinguish the recorded paths.
+
+Lifecycle records omit command arguments, URLs, authentication tokens, input
+and clipboard contents. Existing debug/stderr logs have separate contents.
+They record shutdown requests and exits, not every frame. A forced process
+termination or machine failure may prevent the final record; a missing exit
+record alone does not prove a crash. Failure to write a lifecycle log does
+not stop the application.
+
+Each process keeps two generations: `lifecycle-<pid>-<run>.jsonl` and
+`lifecycle-<pid>-<run>.1.jsonl`, each at most 1 MiB. Rotation replaces the
+previous generation before appending a complete record to a new current file.
+A single oversized record is replaced by a small size-only diagnostic entry.
+Preserve both generations when investigating a failure.
+
+Logs belonging to stopped processes are kept for at most seven days since
+their last write, with an additional limit of 128 files and 32 MiB combined.
+Oldest files are removed first; both generations count toward these limits.
+Cleanup runs on the first write, on later writes at most once per minute,
+and during normal process exit. After a forced termination, the next writer
+performs cleanup. No background cleanup process is started.
+
+Files belonging to live PIDs, or PIDs whose status cannot be established, are
+protected and excluded from the stopped-process limits. PID reuse therefore
+may delay cleanup of an older run. Only recognized lifecycle filenames that
+are regular files are removed; other logs, directories and symbolic links
+are left alone. Failed cleanup is retried on a subsequent cleanup pass.
+If rotation fails, the pending record is dropped rather than growing the file
+past its limit; subsequent writes retry rotation.
+
 [kitty graphics protocol]: https://sw.kovidgoyal.net/kitty/graphics-protocol/

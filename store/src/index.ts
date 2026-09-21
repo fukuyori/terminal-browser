@@ -13,6 +13,7 @@ export {
   ensureDataDir,
 } from "./paths";
 export { openStore, store } from "./client";
+export { logLifecycle, observeProcessExit } from "./lifecycle";
 export type { Store } from "./client";
 export { appState, instances, settings } from "./schema";
 export type { DevtoolsDock, InstanceRow, NewInstanceRow, SettingsRow } from "./schema";

@@ -20,7 +20,7 @@ import { AgentPaneFinder } from "../grab/target";
 import type { EmbeddedAgent } from "../grab/target";
 import { zoomDirection } from "../zoom";
 import type { ZoomDirection } from "../zoom";
-import { lastUrl, listApps, setLastUrl, settings, store } from "pixel-store";
+import { lastUrl, listApps, logLifecycle, setLastUrl, settings, store } from "pixel-store";
 import type { InstanceRow, RegisteredApp } from "pixel-store";
 
 import type { RecordTarget } from "../record/recorder";
@@ -85,7 +85,7 @@ export function createSession(ctx: SessionContext): SessionHandle {
   const session = new Session(ctx);
   const ready = session.start().catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
-    session.shutdown(1);
+    session.shutdown(1, "startup failed");
   });
   return {
     ready,
@@ -307,8 +307,11 @@ class Session {
         this.sessionHidden = !visible;
         this.render();
       },
-      onQuit: () => this.shutdown(),
-      onExit: (code) => this.ctx.onClose(code),
+      onQuit: () => this.shutdown(0, "pixel quit requested"),
+      onExit: (code) => {
+        logLifecycle("daemon", "pixel root exited", { session: this.ctx.key, code, shutdownRequested: this.shuttingDown });
+        this.ctx.onClose(code);
+      },
     });
     this.fontId = await this.root.registerFont(bundledFontPath());
     this.applyKeyBindings(this.root.info.kittyKeyboard);
@@ -385,7 +388,7 @@ class Session {
   }
 
   private closeOrShutdown(id: number) {
-    if (this.tabs.count <= 1) this.shutdown();
+    if (this.tabs.count <= 1) this.shutdown(0, "last tab closed");
     else this.tabs.close(id);
   }
 
@@ -396,8 +399,9 @@ class Session {
     this.root?.setTitle(state ? state.title || displayUrl(state.url) : "");
   }
 
-  shutdown(code = 0) {
+  shutdown(code = 0, reason = "close requested") {
     if (this.shuttingDown) return;
+    logLifecycle("daemon", "session shutdown requested", { session: this.ctx.key, code, reason });
     this.shuttingDown = true;
     for (const record of this.records.values()) record.dispose();
     this.records.clear();
@@ -695,7 +699,7 @@ class Session {
     if (event.kind === "release") return false;
     const quitKey = event.key === "q" || (process.platform === "darwin" && event.key === "c");
     if (event.mods.ctrl && quitKey) {
-      this.shutdown();
+      this.shutdown(0, "quit key");
       return true;
     }
     if (process.platform === "linux" && event.mods.ctrl && event.key === "c") {
