@@ -6,6 +6,9 @@ Notable changes to the Windows fork of terminal-browser are documented here.
 
 ## Unreleased
 
+- Add a Windows-only CI verification mode that builds and tests both repositories
+  and uploads ZIP/installer artifacts without signing, tagging or publishing.
+
 - Record CLI, daemon and bridge lifecycle events with timestamps, process IDs
   and session IDs. Distinguish a session-close notification from a lost daemon
   connection, and record shutdown requests, signals and idle expiry. The earlier

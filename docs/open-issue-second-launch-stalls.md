@@ -4,8 +4,11 @@ Found while working through group C of `windows-device-checks.md`. The browser
 stopped drawing and stopped responding.
 
 The cause was confirmed and fixed on 2026-09-20 in the adjacent Pixel checkout.
-Native Windows integration checks pass; a repeat on a visible Ghostty pane is
-still needed. See [Fix and verification](#fix-and-verification).
+All six group C device checks passed in Ghostty that day, as recorded in
+[the device results](windows-device-checks.md#c-a-second-app-in-the-same-terminal).
+The native Windows integration check also passed again on 2026-09-21 at
+terminal-browser `05fef3e`, with Pixel pinned to `5bb53b9`.
+See [Fix and verification](#fix-and-verification).
 
 Seen on 2026-09-20, Windows 11, Ghostty 1.3.2-windows.9, at
 terminal-browser `ffd23da` with pixel `7002209`.
@@ -168,12 +171,22 @@ revision, since no commit was requested. Update the pin after the Pixel fix
 has been committed before making a reproducible release. That was done on
 2026-09-21: `pixel.commit` names `5bb53b956ec2b9d1373e56f8c0c8869a720668bd`.
 
-## Remaining device check
+## Completed device check
 
-Repeat group C in a visible Ghostty pane with the refreshed development build.
-The native integration check does not establish visible terminal rendering,
-real mouse behavior, or the owner-to-guest handoff when the owner quits first.
-Keep adoption disabled explicitly when checking the host path:
+The device record confirms C1–C6 passed in a visible Ghostty pane on
+2026-09-20, including input, resizing, guest termination, and owner termination
+with no remaining process or pipe. The earlier pending status in this issue
+was stale; it was reconciled with that record on 2026-09-21.
+
+The additional automated run on 2026-09-21 verified owner and guest frame
+contents, switching, resizing, guest input, continued drawing beyond the
+original 12-second failure, browser-tab creation, and shutdown using real
+Electron processes. It did not repeat the visible device checks. Lifecycle
+logs recorded both daemon shutdown requests and exits; no `pixel.exe` remained
+after the check. Local evidence is under
+`tools/stall-diagnostics/run-cBR4yf/` (ignored diagnostic output).
+
+For any future repeat of the host-path check, keep adoption disabled explicitly:
 
 ```powershell
 $env:TERMINAL_BROWSER_NO_MERGE = '1'

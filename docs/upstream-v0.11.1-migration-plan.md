@@ -574,23 +574,32 @@ JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピー
 
 `fukuyori/pixel` は公開リポジトリなので、`actions/checkout` に追加の PAT は要らない。
 
+2026-09-21 に、本体 `05fef3e` と Pixel の pin
+`5bb53b956ec2b9d1373e56f8c0c8869a720668bd` が GitHub に存在することを確認した。
+上記の未 push という前提は解消済み。後続の `verify_windows=true` オプションでは
+Windows のビルド・テスト・Actions 成果物保存だけを行い、署名・タグ作成・R2 公開・
+Worker 配備を省く。この workflow 変更を push してから実行する。
+ローカルでの workflow 検証と、GitHub 上での実行検証は区別する。
+
 **どう動かすか**
 
 `release.yml` のトリガーと、GitHub Release への登録可否。
 
 | 起動方法 | `channel` | GitHub Release 登録 |
 |---|---|---|
+| `workflow_dispatch` + `verify_windows=true` | `dev`（Windows 検証のみ） | されない |
 | タグ push（`v*` / `*-win.*`） | `stable` | される |
 | `workflow_dispatch` + `bump` が `patch`/`minor`/`major` | `stable`（タグを自動作成して push する） | される |
 | `workflow_dispatch` + `bump=none`（既定） | `dev` | されない |
 | `main` への push | `dev` | されない |
 | その他のブランチへの push | — | トリガーされない |
 
-登録は `if: needs.prepare.outputs.channel == 'stable'` で守られているので、
-**`bump=none` の手動実行なら公開処理まで進まない**。ジョブの通し確認にはこれを使う。
+検証では `verify_windows=true` を明示する。`bump=none`・`deploy_worker=false`・
+ブランチ指定が必須で、それ以外の組み合わせはタグ作成前に停止する。
+このモードでは macOS/Linux・Worker・Release のジョブと署名処理を省く。
 
-ただし `dev` でも `Publish`（`scripts/publish-r2.sh` による Cloudflare R2 への
-アップロード）は条件なしで走る。確認のための実行でも R2 には上がる。
+`verify_windows` を指定しない従来の手動実行では、`bump=none` でも R2 に公開する。
+GitHub Release が作られないことと、外部公開されないことは区別する。
 
 **確認できていないこと**
 

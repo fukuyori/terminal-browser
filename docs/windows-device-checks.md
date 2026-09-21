@@ -174,6 +174,14 @@ which is what group G asks for.
 Done on 2026-09-20 in Ghostty with the frame-path fix in place: all six
 passed, and ending the owner left no process and no pipe behind.
 
+On 2026-09-21, the real-process integration check passed again at
+terminal-browser `05fef3e` with Pixel `5bb53b9`. Owner/guest frame contents,
+switching, resizing, guest input, drawing beyond the original 12-second
+failure, browser-tab creation, and shutdown all passed. Both daemon shutdowns
+were recorded in lifecycle logs, and no `pixel.exe` remained. This was an
+automated regression check, not a repeat of the visible Ghostty checks above.
+The stale "device check pending" text in the issue was corrected accordingly.
+
 ## D. SSH, agents and the clipboard
 
 | # | Do this | Expect |
