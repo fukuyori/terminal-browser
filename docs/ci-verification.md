@@ -3,31 +3,76 @@
 ## Current workflow
 
 The workflow in `.github/workflows/release.yml` is named **Windows CI**. It runs
-one Windows job on pushes to `main`, `windows-v0.11.1` and `*-win.*` tags, or
-by manual dispatch without inputs. It checks out this repository at the event
-SHA and the adjacent `fukuyori/pixel` checkout at `pixel.commit`.
+one Windows job on pushes to `windows-native`, `windows-v0.13.4` and `*-win.*`
+tags, or by manual dispatch without inputs. It checks out this repository once
+at the event SHA. Pixel is built from `pixel/` in that checkout; there is no
+second repository and no `pixel.commit`.
 
 Every run uses `verify-<sha>` and channel `dev`, including tag-triggered runs.
-It builds and tests Pixel and terminal-browser, creates an unsigned ZIP and
-installer, and uploads `windows-verification-windows-x64`. The installer uses
-the same `verify-<sha>` filename, with internal version `0.0.0.0`.
+The job runs, in order:
+
+1. `scripts/build-windows.ps1 -Zip`, which installs the workspace, rebuilds
+   Pixel and its native addon from scratch, and stages the payload and ZIP.
+2. `cargo test` on `pixel/engine`, a build of `shared`, then `pnpm -r typecheck`
+   and `pnpm -r test` over every workspace package, Pixel's included.
+3. `scripts/package-windows-inno.ps1`, which builds the installer. The installer
+   uses the same `verify-<sha>` filename, with internal version `0.0.0.0`.
+4. An upload of `windows-verification-windows-x64` holding the ZIP, the
+   installer and their two manifests.
+
+`shared` is built before the typecheck because the payload bundles from
+`shared/src` and so never creates `shared/dist/index.d.ts`, which the other
+packages resolve their types from.
 
 The workflow has `contents: read`. It does not sign, create or push tags,
 publish GitHub Releases or R2 objects, deploy the worker, or run macOS/Linux
 jobs. It needs no signing or Cloudflare secrets. These CI artifacts are for
-verification and must not be distributed as signed release packages.
+verification and must not be distributed as signed release packages. Upstream's
+`pixel-release`, `pixel-electron-build` and `pixel-electron-sync` workflows are
+not kept on this branch.
 
-After committing and pushing the workflow change, the branch push starts CI.
-To request another run explicitly:
+A push to the branch starts CI. To request another run explicitly:
 
 ```powershell
-gh workflow run release.yml --repo fukuyori/terminal-browser --ref windows-v0.11.1
+gh workflow run release.yml --repo fukuyori/terminal-browser --ref windows-v0.13.4
 ```
 
 Confirm that the run's `headSha` matches the intended commit. Publishing is a
 separate maintainer action: build with `-Sign`, check the artifacts and their
 manifests, then upload the exact signed ZIP, EXE and two manifests to a GitHub
 Release for the existing tag. See the [release checklist](version-update-checklist.md).
+
+## Runs on the v0.13.4 branch (2026-10-03)
+
+The single-checkout workflow first ran on the merge commit and passed.
+
+| Run | Commit | Result | Duration |
+| --- | --- | --- | --- |
+| [37107705374](https://github.com/fukuyori/terminal-browser/actions/runs/37107705374) | `a801932`, the merge of upstream v0.13.4 | success | about 23 minutes |
+| [37114910258](https://github.com/fukuyori/terminal-browser/actions/runs/37114910258) | `bc60d03`, documentation only | success | about 22 minutes |
+| [37116382130](https://github.com/fukuyori/terminal-browser/actions/runs/37116382130) | `9d4f6db`, stop running copies before install and uninstall | success | about 18 minutes |
+
+Counts on the runner for `a801932`, read from the job log:
+
+| Suite | Passed | Skipped or ignored | Failed |
+| --- | --- | --- | --- |
+| Pixel Rust, `pixel-core` | 248 | 1 ignored | 0 |
+| Pixel Rust, `pixel-node` | 45 | 0 | 0 |
+| Pixel JavaScript | 46 | 10 | 0 |
+| shared | 26 | 0 | 0 |
+| browser | 34 | 0 | 0 |
+| cli | 35 | 1 | 0 |
+
+For `9d4f6db`, which adds four CLI tests, the CLI suite passed 39 with 1 skipped.
+The typecheck reported no errors in either run. The `a801932` run uploaded
+`windows-verification-windows-x64`, 356,179,637 bytes, expiring at
+`2027-01-01T07:50:54Z`. The installer version fell back to `0.0.0.0` as expected
+for a verification version. The artifact was not downloaded or installed.
+
+The sections from [Historical Windows verification mode](#historical-windows-verification-mode)
+down describe the two-repository workflow used for `0.11.1-win.1` and are kept
+as a record. Their steps about `pixel.commit`, `-RequireCleanPixel` and
+`pixel-store` no longer apply.
 
 ## Cancelled tag run on 2026-09-21
 
@@ -40,7 +85,8 @@ self-hosted runner. The run was cancelled, and it did not create a Release.
 
 The tag stays at `eb594b2`; it is not moved to change the workflow. Re-running
 that old run uses the old workflow. Verify the revised workflow from the
-updated branch instead. A run of the revised workflow is still pending.
+updated branch instead. The revised workflow first ran from the branch as
+[run 35558321562](https://github.com/fukuyori/terminal-browser/actions/runs/35558321562) and passed.
 
 At 12:34:25 JST, the locally signed and tested ZIP/EXE and both manifests were
 published as [0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1).

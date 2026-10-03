@@ -1,15 +1,23 @@
-# Windows device checks for the v0.11.1 migration
+# Windows device checks
 
-What has to be tried by hand on a real terminal before this migration is done.
-Everything here needs a person watching a screen, which is why none of it is a
-test.
+What has to be tried by hand on a real terminal before a migration to a new
+upstream version is done. Everything here needs a person watching a screen,
+which is why none of it is a test. The list was written for the v0.11.1
+migration and was run again for v0.13.4.
 
 Work through a group at a time and note what happened. A group that fails
 tells you more than a whole list half-finished.
 
-Before repeating a check, build the workspace with `corepack pnpm -r build`
-using the matching installed Pixel dependency. The records below describe the
-tested builds, not the current state of generated files in any checkout.
+Before repeating a check, build Pixel and the workspace from the repository
+root. The records below describe the tested builds, not the current state of
+generated files in any checkout.
+
+```powershell
+corepack pnpm install
+corepack pnpm --filter "@zenbu-labs/pixel" build
+corepack pnpm --filter "@zenbu-labs/pixel" build:native -- --release
+corepack pnpm --filter shared --filter terminal-browser --filter terminal-browser-cli build
+```
 
 ## Current status (2026-09-21)
 
@@ -676,9 +684,12 @@ cause. F and G results are recorded separately below.
 These need a package built with `-Sign`, which is the maintainer's step.
 
 ```powershell
-.\scripts\build-windows.ps1 -Zip -Sign -RequireCleanPixel
+.\scripts\build-windows.ps1 -Zip -Sign
 .\scripts\package-windows-inno.ps1 -Sign
 ```
+
+The 2026-09-21 records below were built with `-RequireCleanPixel`, which the
+v0.13.4 migration removed along with the separate Pixel checkout.
 
 | # | Do this | Expect |
 | --- | --- | --- |
@@ -689,6 +700,45 @@ These need a package built with `-Sign`, which is the maintainer's step.
 | F5 | Launch `terminal-browser` from a new shell | The installed launcher is on `PATH` and works |
 | F6 | Check the uninstaller's signature | `Valid` |
 | F7 | Uninstall | It removes the program and its `PATH` entry |
+| F8 | Uninstall while a browser is open in a pane and `terminal-browser action` has been run once | The pane returns to its prompt with no mouse reports printed, and no process or file is left under the install directory |
+| F9 | Install over a running `0.13.4-win.1` or later | The same: the open browser quits cleanly and the files are replaced |
+
+F8 and F9 cover the stop logic added in `9d4f6db`. The installed build's
+lifecycle log shows it: a `session shutdown requested` record with the reason
+`quit requested`.
+
+F9 was run once on 2026-10-03 at 19:34 with the installer built from `9d4f6db`
+and failed. The open browser was killed instead of asked to quit: its daemon
+left no shutdown record, and the pane was left printing mouse reports. The
+installer had started `node.exe` on the CLI directly, without the
+`TERMINAL_BROWSER_DIST_ROOT` that the launcher sets. The CLI then took a
+different install identity, created `terminal-browser-dev-d31f4934` under
+`~/.local/share`, read that copy's empty registry and reported no browser, so
+only the forced stop ran. The installer now calls `bin\terminal-browser.cmd`.
+
+That call was checked without building an installer: the installed `0.13.4-win.1`
+browser was started as a real process, `cmd /d /c ""<launcher>" shutdown --all"`
+was run the way the installer runs it, the browser quit with exit code 0, and
+its log recorded `quit requested` with nothing killed.
+
+The maintainer then rebuilt the signed packages with the fix and repeated the
+check. F9 passed: a browser opened at 19:39:07 logged `session shutdown
+requested` with the reason `quit requested` at 19:42:59, during the install
+whose log closed at 19:43:13, and no stray `terminal-browser-dev-*` data
+directory was created. Afterwards `0.13.4-win.1` was installed and no process
+was running from the install directory. The maintainer reported F8, the
+uninstall with a browser open, as done as well; the logs read for this record
+do not show it separately.
+
+| Artifact under `dist-release/` | Bytes | SHA-256 |
+| --- | --- | --- |
+| `terminal-browser-0.13.4-win.1-windows-x64.zip` | 212254302 | `0630a77c426c67dbae7d704e2c56b2c8389399388a6d92f97b33d20b073f8357` |
+| `terminal-browser-0.13.4-win.1-windows-x64.exe` | 146441600 | `ee4145a0deae46c9c7e96967fb35b45f436eadb30d50e560a88af70475512891` |
+
+Both matched their manifests in size and hash. The installer had a `Valid`
+Authenticode signature and file version `0.13.4.1`. They were built at 19:39
+and 19:42 from the working tree that was committed afterwards as the commit
+tagged `0.13.4-win.1`.
 
 F2 and F5 are the other two places electron is resolved from, after the
 development path that groups A to E use. All three have to reach a

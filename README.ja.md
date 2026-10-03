@@ -9,23 +9,24 @@ Windowsターミナル内で動作する本物のブラウザです。
 ## オリジナル版との関係
 
 このリポジトリは、[zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser)
-をWindows向けに移植したフォークです。現在の開発ブランチは上流v0.11.1を基にしています。このREADMEは
+をWindows向けに移植したフォークです。現在の開発ブランチは上流v0.13.4を基にしています。このREADMEは
 Windowsフォークだけを対象としています。
 
-| 項目 | 上流v0.11.1 | このWindowsフォーク |
+| 項目 | 上流v0.13.4 | このWindowsフォーク |
 | --- | --- | --- |
 | 実行環境 | オリジナルのターミナル・プロセス連携 | Win32 Console、ConPTY、名前付きパイプ、Windowsパスを使用するWindows x64移植 |
 | 描画 | kitty graphicsによる描画 | WezTermのファイルフレーム転送とWindows固有のiTerm2 PNGフォールバック |
 | 配布 | オリジナルのリリース処理 | メンテナーが署名したInno Setupインストーラーとバージョン付きポータブルZIP、別途Windows CIで検証 |
 | SSH・セットアップ | オリジナルのSSH・skill処理 | Windows OpenSSHと`tar.exe`への対応、Windows互換のskill setup |
-| バージョン | `v0.11.1` | 上流の基準版とWindows改訂番号を表す`0.11.1-win.1` |
+| バージョン | `v0.13.4` | 上流の基準版とWindows改訂番号を表す`0.13.4-win.1` |
 
 上流から取り込んだ機能と各Windowsリリース固有の変更は、
 [変更履歴](CHANGELOG.ja.md)を参照してください。
 
-2026-09-21に、ローカルで作成・署名・検証した ZIP とインストーラーを
+リリースは、ローカルで作成・署名・検証した ZIP とインストーラーを
+[リリースページ](https://github.com/fukuyori/terminal-browser/releases)で公開します。前回は 2026-09-21 の
 [0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1)
-として公開しました。CI の未署名成果物は検証用です。[CI結果](docs/ci-verification.md)と
+です。CI の未署名成果物は検証用です。[CI結果](docs/ci-verification.md)と
 [実機確認記録](docs/windows-device-checks.md)を参照してください。
 
 ## Windows対応（実験的）
@@ -97,15 +98,41 @@ terminal-browser https://example.com
 
 ### Windowsでの終了
 
-terminal-browserを表示しているペインで`Ctrl+Q`を押します。`Ctrl+Q`をWezTermのリーダーキーに割り当てて
-いる場合は、`Ctrl+Shift+Q`を使用します。terminal-browserを起動したPowerShellセッションでは
-`Ctrl+C`でも終了できます。
+terminal-browserを表示しているペインで`Ctrl+Q`を押します。Ghosttyのように端末自身が`Ctrl+Q`を
+使う場合や、`Ctrl+Q`をWezTermのリーダーキーに割り当てている場合は、`Ctrl+Shift+Q`を使用します。
+terminal-browserを起動したPowerShellセッションでは`Ctrl+C`でも終了できます。
+
+すべてのペインのブラウザをまとめて終了するには、任意のシェルで次を実行します。各ブラウザは終了キーと
+同じ手順で終了するので、それぞれの端末は元の状態に戻ります。
+
+```powershell
+terminal-browser shutdown --all
+```
 
 ### Windowsからのアンインストール
 
 **設定 > アプリ > インストールされているアプリ**を開き、**terminal-browser**の**アンインストール**を
 選択します。スタートメニューのアンインストール用ショートカットからも同じ操作ができます。
 アンインストール時には、インストーラーが追加したユーザー`PATH`の項目も削除されます。
+
+インストーラーとアンインストーラーは、最初に実行中のプロセスを止めます。`terminal-browser shutdown --all`を
+実行し、そのあとインストール先から動いている残りのプロセス（agent-browserの常駐プロセスなど）を
+終了します。`0.13.4-win.1`より前のリリースには終了を依頼する機能が無いため、それらから上書き
+インストールする場合は、先にブラウザを閉じてください。
+
+### Windowsでの設定
+
+`Ctrl+,`で設定画面を開きます。設定とショートカットは、`%USERPROFILE%\.config\terminal-browser`の
+`settings.json`と`shortcuts.json`に保存されます。場所は`XDG_CONFIG_HOME`または
+`TERMINAL_BROWSER_CONFIG_DIR`で変更できます。`terminal-browser config list`で全項目を表示でき、
+`config get`、`config set`、`config unset`、`config path`でシェルから読み書きできます。
+
+### テレメトリと更新確認
+
+このフォークはテレメトリを送信しません。上流の利用状況イベントとクラッシュ報告はビルドで無効にして
+あり、その設定項目も表示されません。Windowsでは、上流のリリース情報への更新確認も行いません。
+上流のリリース情報はmacOSとLinuxのビルドだけを掲載しているためです。Windows版の新しいリリースは
+[リリースページ](https://github.com/fukuyori/terminal-browser/releases)で確認してください。
 
 ### Claude Codeプラグイン
 
@@ -153,16 +180,16 @@ ZIPは任意作成で、確認済みCIビルドのサイズは約209 MBです。
 ### Windows版のバージョン
 
 Windowsフォークのバージョンは、上流バージョンとフォークの改訂番号を組み合わせます。たとえば
-`0.11.1-win.1`は、上流v0.11.1を基にした最初のWindowsリリースです。
+`0.13.4-win.1`は、上流v0.13.4を基にした最初のWindowsリリースです。
 
 既定値は`scripts\build-windows.ps1`の`Version`で設定します。一時的に変更する場合は`-Version`を
 指定します。この値は`VERSION`へ書き込まれ、`terminal-browser --version`で表示されます。
 
-Inno Setupでは4要素の数値バージョンが必要なため、`0.11.1-win.1`はインストーラー内で`0.11.1.1`に
+Inno Setupでは4要素の数値バージョンが必要なため、`0.13.4-win.1`はインストーラー内で`0.13.4.1`に
 なります。この形式以外のバージョンでは、インストーラーのバージョンとして`0.0.0.0`を使用します。
 ZIP と EXE のファイル名は本体のバージョンで揃え、
-`terminal-browser-0.11.1-win.1-windows-x64.zip` と
-`terminal-browser-0.11.1-win.1-windows-x64.exe` になります。
+`terminal-browser-0.13.4-win.1-windows-x64.zip` と
+`terminal-browser-0.13.4-win.1-windows-x64.exe` になります。
 インストーラーのマニフェストは `version` に本体のバージョン、`installerVersion` に
 Windows 用の数値バージョンを記録します。作成スクリプトの `-Version` は数値バージョンだけを上書きします。
 
@@ -254,9 +281,10 @@ terminal-browser action --browser 90107-1 --tab 2 --follow -- fill @e3 "hello"
 
 | 操作 | ショートカット |
 | --- | --- |
-| 終了 | `Ctrl+Q`。`Ctrl+Q`がWezTermのリーダーキーの場合は`Ctrl+Shift+Q` |
+| 終了 | `Ctrl+Q`。端末が`Ctrl+Q`を使う場合は`Ctrl+Shift+Q` |
 | 新しいタブ | `Ctrl+T` |
-| コマンドパレット | `Ctrl+K`または`Alt+K` |
+| コマンドパレット | `Ctrl+K`。端末が`Ctrl+K`を使う場合は`Alt+K` |
+| 設定 | `Ctrl+,` |
 | ページ内検索 | `Ctrl+Shift+F` |
 | 次／前の一致項目 | `Enter`／`Shift+Enter` |
 | 戻る／進む | `Ctrl+[`／`Ctrl+]` |
@@ -266,6 +294,9 @@ terminal-browser action --browser 90107-1 --tab 2 --follow -- fill @e3 "hello"
 | 記録レビューの完了 | `Ctrl+Enter` |
 | エージェントへ送る要素を選択 | `Ctrl+G` |
 | ポップアップまたはオーバーレイを閉じる | `Escape` |
+
+これらは既定値です。ショートカットは修飾キーの完全一致で判定され、設定画面または`shortcuts.json`で
+変更できます。
 
 ## 動作の仕組み
 
@@ -308,7 +339,7 @@ WindowsではOpenSSH Clientが`PATH`に必要です。SSH設定のホストエ�
 
 terminal-browser CLIの一部のサブコマンドは、ターミナルまたはマルチプレクサーのスクリプト機能を使用
 します。別のターミナルに対応する場合は、
-[Pixel側の端末実装](https://github.com/fukuyori/pixel/tree/windows-v0.11.1/packages/pixel/src/terminal/terminals)を参照してください。
+[Pixel側の端末実装](pixel/packages/pixel/src/terminal/terminals)を参照してください。
 
 ## コミュニティ
 

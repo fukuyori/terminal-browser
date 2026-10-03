@@ -179,7 +179,7 @@ records the PID of its attached CLI child.
 For a development checkout, locate the directory from its root:
 
 ```powershell
-node -p "require('./store/dist/paths.js').LOGS_DIR"
+node -p "require('./shared/dist/paths.js').LOGS_DIR"
 ```
 
 By default it is under `~/.local/state/terminal-browser-dev-<id>/logs` for a

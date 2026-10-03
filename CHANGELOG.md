@@ -4,7 +4,7 @@
 
 Notable changes to the Windows fork of terminal-browser are documented here.
 
-## Unreleased
+## 0.13.4-win.1 (2026-10-03)
 
 - Stop running copies before installing over them or uninstalling. The installer
   and uninstaller first run the new `terminal-browser shutdown --all`, which asks

@@ -10,23 +10,25 @@ A real browser that runs inside your Windows terminal.
 
 This repository is a Windows-specific fork of
 [zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser). The current
-development branch is based on upstream v0.11.1. This README covers the Windows fork only; documentation for
+development branch is based on upstream v0.13.4. This README covers the Windows fork only; documentation for
 other platforms remains in the original project.
 
-| Area | Upstream v0.11.1 | This Windows fork |
+| Area | Upstream v0.13.4 | This Windows fork |
 | --- | --- | --- |
 | Runtime | Original terminal and process integrations | Windows x64 port using Win32 Console, ConPTY, named pipes, and Windows paths |
 | Graphics | Kitty graphics rendering | WezTerm file-frame transport and a Windows-specific iTerm2 PNG fallback |
 | Distribution | Original release process | Maintainer-signed Inno Setup installer and versioned portable ZIP, with separate Windows CI verification |
 | SSH and setup | Original SSH and skill workflows | Windows OpenSSH and `tar.exe` handling, plus Windows-compatible skill setup |
-| Version | `v0.11.1` | `0.11.1-win.1`, identifying the upstream base and Windows revision |
+| Version | `v0.13.4` | `0.13.4-win.1`, identifying the upstream base and Windows revision |
 
 Features incorporated from upstream and changes unique to each Windows release are listed in the
 [changelog](CHANGELOG.md).
 
+Releases are published on the
+[releases page](https://github.com/fukuyori/terminal-browser/releases) from a
+locally built, signed and verified ZIP and installer; the previous one was
 [0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1)
-was published on 2026-09-21 with the locally built, signed and verified ZIP and
-installer. CI builds are unsigned and are for verification only. See the
+on 2026-09-21. CI builds are unsigned and are for verification only. See the
 [CI results](docs/ci-verification.md) and [device checks](docs/windows-device-checks.md).
 
 ## Windows support (experimental)
@@ -98,15 +100,41 @@ If the command is not found, open another terminal or call the launcher directly
 
 ### Exit on Windows
 
-Press `Ctrl+Q` in the terminal-browser pane. If `Ctrl+Q` is assigned to WezTerm as a leader
-key, use `Ctrl+Shift+Q`. You can also press `Ctrl+C` in the PowerShell session that launched
-terminal-browser.
+Press `Ctrl+Q` in the terminal-browser pane. If the terminal takes `Ctrl+Q` itself, as Ghostty
+does, or it is the WezTerm leader key, use `Ctrl+Shift+Q`. You can also press `Ctrl+C` in the
+PowerShell session that launched terminal-browser.
+
+To quit the browsers in every pane at once, run this from any shell. Each browser quits the way
+its quit key does, so every terminal is put back:
+
+```powershell
+terminal-browser shutdown --all
+```
 
 ### Uninstall on Windows
 
 Open **Settings > Apps > Installed apps**, select **terminal-browser**, and choose
 **Uninstall**. The Start menu uninstall shortcut performs the same operation. Uninstalling also
 removes the user `PATH` entry added by the installer.
+
+The installer and the uninstaller stop running copies first. They run
+`terminal-browser shutdown --all`, then end whatever still runs from the install directory, such
+as the agent-browser daemon. Installing over a release older than `0.13.4-win.1` cannot ask its
+browsers to quit, so close them before upgrading from one.
+
+### Settings on Windows
+
+Press `Ctrl+,` for the settings screen. Settings and shortcuts are kept in `settings.json` and
+`shortcuts.json` under `%USERPROFILE%\.config\terminal-browser`; `XDG_CONFIG_HOME` or
+`TERMINAL_BROWSER_CONFIG_DIR` moves them. `terminal-browser config list` prints every key, and
+`config get`, `config set`, `config unset` and `config path` read and change them from a shell.
+
+### Telemetry and update checks
+
+This fork sends no telemetry. Upstream's usage events and crash reports are disabled in the
+build and their settings are not offered. On Windows the browser also does not ask upstream's
+release feed for updates, because that feed lists only macOS and Linux builds; new Windows
+releases appear on the [releases page](https://github.com/fukuyori/terminal-browser/releases).
 
 ### Claude code plugin
 
@@ -157,16 +185,16 @@ for exact artifacts and checks not repeated on this build.
 ### Windows versioning
 
 Windows fork versions combine the upstream version and a fork revision. For example,
-`0.11.1-win.1` is the first Windows release based on upstream v0.11.1.
+`0.13.4-win.1` is the first Windows release based on upstream v0.13.4.
 
 Set the default with `Version` in `scripts\build-windows.ps1`, or pass `-Version` for a one-off
 build. The value is written to `VERSION` and displayed by `terminal-browser --version`.
 
-Inno Setup requires a numeric four-part version, so `0.11.1-win.1` becomes `0.11.1.1` in the
+Inno Setup requires a numeric four-part version, so `0.13.4-win.1` becomes `0.13.4.1` in the
 installer. Versions outside this format use `0.0.0.0` for the installer version.
 The ZIP and EXE filenames both keep the payload version, for example
-`terminal-browser-0.11.1-win.1-windows-x64.zip` and
-`terminal-browser-0.11.1-win.1-windows-x64.exe`. The installer manifest records
+`terminal-browser-0.13.4-win.1-windows-x64.zip` and
+`terminal-browser-0.13.4-win.1-windows-x64.exe`. The installer manifest records
 that version in `version` and the numeric Windows version in `installerVersion`.
 The packaging script's `-Version` overrides only the numeric Windows version.
 
@@ -258,9 +286,10 @@ pasting.
 
 | Action | Shortcut |
 | --- | --- |
-| Quit | `Ctrl+Q` or `Ctrl+Shift+Q` when `Ctrl+Q` is the WezTerm leader key |
+| Quit | `Ctrl+Q`, or `Ctrl+Shift+Q` when the terminal takes `Ctrl+Q` |
 | New tab | `Ctrl+T` |
-| Command palette | `Ctrl+K` or `Alt+K` |
+| Command palette | `Ctrl+K`, or `Alt+K` when the terminal takes `Ctrl+K` |
+| Settings | `Ctrl+,` |
 | Find in page | `Ctrl+Shift+F` |
 | Next / previous match | `Enter` / `Shift+Enter` |
 | Back / forward | `Ctrl+[` / `Ctrl+]` |
@@ -270,6 +299,9 @@ pasting.
 | Complete recording review | `Ctrl+Enter` |
 | Select an element to send to an agent | `Ctrl+G` |
 | Close popup or overlay | `Escape` |
+
+These are the defaults. Shortcuts match their modifiers exactly and can be changed on the
+settings screen or in `shortcuts.json`.
 
 ## How it works
 
@@ -313,7 +345,7 @@ For local development setup, the recommended approach is to ask a coding agent.
 
 Some terminal-browser CLI subcommands rely on terminal or multiplexer scripting features. To
 add support for another terminal, refer to the
-[Pixel terminal implementations](https://github.com/fukuyori/pixel/tree/windows-v0.11.1/packages/pixel/src/terminal/terminals).
+[Pixel terminal implementations](pixel/packages/pixel/src/terminal/terminals).
 
 ## Community
 
