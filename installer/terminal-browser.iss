@@ -155,6 +155,34 @@ begin
     RegWriteExpandStringValue(HKCU, UserEnvironmentKey, 'Path', PaddedPath);
 end;
 
+// A running copy keeps its files open, so they could be neither replaced nor
+// removed. Browsers are asked to quit first, which puts their terminals back;
+// whatever still runs from the install directory afterwards is ended.
+procedure StopRunningCopies;
+var
+  Node, Cli, Leftovers: String;
+  ResultCode: Integer;
+begin
+  Node := ExpandConstant('{app}\runtime\node.exe');
+  Cli := ExpandConstant('{app}\cli\dist\main.js');
+  if FileExists(Node) and FileExists(Cli) then
+    Exec(Node, '--disable-warning=ExperimentalWarning "' + Cli + '" shutdown --all', '',
+      SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  Leftovers := '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | ' +
+    'Where-Object { $_.ExecutablePath -like ''' + ExpandConstant('{app}') + '\*'' -and ' +
+    '$_.Name -notlike ''unins*.exe'' } | ' +
+    'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"';
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Leftovers, '',
+    SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  StopRunningCopies;
+  Result := '';
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('addtopath') then
@@ -164,5 +192,8 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
+  begin
+    StopRunningCopies;
     RemoveFromUserPath(ExpandConstant('{app}\bin'));
+  end;
 end;

@@ -31,6 +31,7 @@ import { findOwner } from "@zenbu-labs/pixel/terminal";
 import type { Direction, Terminal, TerminalCheck } from "@zenbu-labs/pixel/terminal";
 import { actionCommand } from "./action";
 import { control } from "./control";
+import { gone, quitBrowsers } from "./shutdown";
 import { ensureSetup, setupCommand } from "./setup";
 import { commandHelp, helpTopics, rootHelp } from "./help";
 import { browsers, describe, recordKey } from "./instances";
@@ -324,17 +325,16 @@ async function daemonPid(): Promise<number | null> {
   return null;
 }
 
-async function gone(pid: number, within: number): Promise<boolean> {
-  const deadline = Date.now() + within;
-  while (Date.now() < deadline) {
-    try {
-      process.kill(pid, 0);
-    } catch {
-      return true;
-    }
-    await sleep(100);
+async function shutdownAll(): Promise<number> {
+  const { quit, killed } = await quitBrowsers(await instances());
+  const stopped = quit.length + killed.length;
+  if (stopped === 0) {
+    process.stdout.write("no browser running\n");
+  } else {
+    const forced = killed.length > 0 ? `, ${killed.length} killed because they did not quit` : "";
+    process.stdout.write(`browsers stopped: ${stopped}${forced}\n`);
   }
-  return false;
+  return 0;
 }
 
 async function shutdownDaemon(): Promise<number> {
@@ -797,7 +797,7 @@ async function main(): Promise<number> {
   if (command === "upgrade") return upgradeCommand();
   if (command === "config") return configCommand(args);
   if (command === "claude-bridge") return claudeBridgeCommand(args);
-  if (command === "shutdown") return shutdownDaemon();
+  if (command === "shutdown") return takeBoolFlag(args, "--all") ? shutdownAll() : shutdownDaemon();
   if (command === "register-app") return registerAppCommand(args);
   if (command === "unregister-app") return unregisterAppCommand(args);
   if (command === "apps") return appsCommand(args);

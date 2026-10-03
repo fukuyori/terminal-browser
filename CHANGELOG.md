@@ -6,6 +6,13 @@ Notable changes to the Windows fork of terminal-browser are documented here.
 
 ## Unreleased
 
+- Stop running copies before installing over them or uninstalling. The installer
+  and uninstaller first run the new `terminal-browser shutdown --all`, which asks
+  the browser in every pane to quit the way its quit key does so each terminal
+  is put back, then end whatever still runs from the install directory, such as
+  the agent-browser daemon and the Claude Code bridge. Before this, an uninstall
+  left those processes running and their files behind.
+
 - Move to upstream v0.13.4: settings and shortcut config files with a settings
   screen, WebMCP, the toolbar React Grab button, and the reworked presenter that
   lowers CPU use. Pixel now lives in this repository under `pixel/`, so the

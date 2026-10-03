@@ -400,6 +400,7 @@ class Session {
       },
       agentTouch: (id) => this.tabs.touchAgentControl(id),
       agentRelease: () => this.tabs.releaseAgentControl(),
+      quit: () => this.shutdown(0, "quit requested"),
       viewport: () =>
         this.root ? { width: this.root.info.width, height: this.root.info.height } : null,
       tabs: () => this.tabs.registryView(),

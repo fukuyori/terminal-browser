@@ -34,6 +34,7 @@ export interface ControlHost {
   closeTab(id: number): boolean;
   agentTouch(id: number): boolean;
   agentRelease(): void;
+  quit(): void;
   tabs(): unknown;
   targets(): Promise<unknown>;
   viewport(): { width: number; height: number } | null;
@@ -191,6 +192,10 @@ export class Registry {
         this.host.agentRelease();
         return { ...this.record(), tabs: await this.host.targets() };
       }
+      case "quit":
+        // After this request is answered, so the caller hears back before the pipe goes.
+        setImmediate(() => this.host.quit());
+        return {};
       default:
         throw new Error(`unknown command: ${request.cmd}`);
     }

@@ -107,11 +107,14 @@ Remove application metadata from ~/.local/share/terminal-browser-interop/apps/<i
   },
   shutdown: {
     summary: "Stop the daemon",
-    usage: "terminal-browser shutdown",
+    usage: "terminal-browser shutdown [--all]",
     body: `
 Every browser in a terminal pane shares one browser process as an optimization. To
 fully quit terminal-browser operations, you can use this shutdown command. This will
 close all open browsers.
+
+  --all    Quit the browsers in every pane, each the way its quit key does, so
+           every terminal is put back. Ones that do not quit are killed.
 `,
   },
   config: {
