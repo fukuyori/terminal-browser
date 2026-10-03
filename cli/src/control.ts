@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import net from "node:net";
 
+// a browser that cannot say where it sits this quickly is not worth waiting for,
+// or every open would stall behind one slow host
+export const WHERE_TIMEOUT_MS = 300;
+
 export function control(
   socketPath: string,
   request: Record<string, unknown>,

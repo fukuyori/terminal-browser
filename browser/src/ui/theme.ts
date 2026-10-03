@@ -1,13 +1,15 @@
-import type { EngineInfo, Rgba } from "pixel-react";
+import type { EngineInfo, Rgba } from "@zenbu-labs/pixel";
 
 export interface Theme {
   bg: Rgba;
+  overlay: Rgba;
   fg: Rgba;
   muted: Rgba;
   disabled: Rgba;
   accent: Rgba;
   field: Rgba;
   fieldBorder: Rgba;
+  frame: Rgba;
   hover: Rgba;
   hoverStrong: Rgba;
   hairline: Rgba;
@@ -37,18 +39,24 @@ export function makeTheme(colors: EngineInfo["colors"]): Theme {
   const bg = colors.background ?? [30, 32, 38, 255];
   const fg = colors.foreground ?? [235, 237, 242, 255];
   const accent = colors.palette[12] ?? colors.palette[4] ?? [93, 156, 255, 255];
+  // the chrome never paints its own backdrop: bg is fully transparent so the
+  // terminal shows through, and lifted fills are translucent veils (over an
+  // opaque terminal a veil composites to exactly the old opaque mix)
+  const lift = (toward: Rgba, t: number) => withAlpha(toward, Math.round(255 * t));
   return {
-    bg,
+    bg: withAlpha(bg, 0),
+    overlay: bg,
     fg,
     accent,
     muted: mix(fg, bg, 0.35),
     disabled: mix(fg, bg, 0.7),
-    field: mix(bg, fg, 0.06),
-    fieldBorder: mix(bg, fg, 0.16),
-    hover: mix(bg, fg, 0.12),
-    hoverStrong: mix(bg, fg, 0.26),
-    hairline: mix(bg, fg, 0.12),
-    selection: mix(bg, accent, 0.35),
+    field: lift(fg, 0.06),
+    fieldBorder: lift(fg, 0.16),
+    frame: withAlpha(fg, 96),
+    hover: lift(fg, 0.12),
+    hoverStrong: lift(fg, 0.26),
+    hairline: lift(fg, 0.12),
+    selection: lift(accent, 0.35),
     red: colors.palette[9] ?? colors.palette[1] ?? [229, 72, 77, 255],
     green: colors.palette[10] ?? colors.palette[2] ?? [48, 164, 108, 255],
     yellow: colors.palette[11] ?? colors.palette[3] ?? [245, 165, 36, 255],

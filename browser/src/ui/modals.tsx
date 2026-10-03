@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Input, Text } from "pixel-react";
-import type { NodeHandle } from "pixel-react";
-import type { BrowserState } from "../page/types";
+import { Box, Input, Text } from "@zenbu-labs/pixel";
+import type { NodeHandle } from "@zenbu-labs/pixel";
+import type { WebViewState } from "@zenbu-labs/pixel";
 import { Icon } from "./icons";
 import type { Theme } from "./theme";
 import type { ChromeActions, ChromeLayout, NewTabView, PaletteView } from "./types";
 
-function Backdrop({ layout, onClose }: { layout: ChromeLayout; onClose(): void }) {
+export function Backdrop({ layout, onClose }: { layout: ChromeLayout; onClose(): void }) {
   return (
     <Box
       style={{
@@ -49,11 +49,12 @@ function ModalCard({
           inset: { top: layout.toolbarHeight + layout.rem * 1.2, left: (layout.width - width) / 2 },
           width,
           flexDirection: "column",
-          background: theme.bg,
+          background: theme.overlay,
           cornerRadius: layout.rem * 0.55,
           border: { width: 1, color: theme.fieldBorder },
           overflow: "hidden",
         }}
+        onClick={() => {}}
       >
         {children}
       </Box>
@@ -108,7 +109,7 @@ export function PaletteCard({
               selectable: false,
             }}
           >
-            no matching actions
+            No matching actions
           </Text>
         )}
         {view.items.map((item, i) => (
@@ -154,7 +155,7 @@ export function UrlCard({
   layout,
   theme,
 }: {
-  state: BrowserState;
+  state: WebViewState;
   actions: ChromeActions;
   layout: ChromeLayout;
   theme: Theme;

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import net from "node:net";
 
-import { callerTty } from "pixel-terminals";
+import { callerTty } from "@zenbu-labs/pixel/terminal";
 import {
   INTEROP_PROTOCOL_VERSIONS,
   advertiseInstance,
@@ -10,20 +10,16 @@ import {
   removeInstance,
   upsertInstance,
   withdrawInstance,
-} from "pixel-store";
-import type { InstanceRow, OpenResult, OpenSpec } from "pixel-store";
+} from "shared";
+import type { InstanceRow } from "shared";
 
-import type { BrowserState } from "./page/types";
-import { INSTANCES_DIR } from "pixel-store";
+import type { WebViewState } from "@zenbu-labs/pixel";
+import { INSTANCES_DIR } from "shared";
 
 export interface Where {
   terminal: string | null;
   tab: string | null;
   pane: string | null;
-}
-
-export interface InteropInfo {
-  mode: "browser" | "app";
 }
 
 export interface ControlHost {
@@ -32,14 +28,13 @@ export interface ControlHost {
   where(): Promise<Where>;
   splitDir: InstanceRow["splitDir"];
   parentTty: string | null;
-  state(): BrowserState;
-  interop(): InteropInfo;
-  openAppTab(spec: OpenSpec, app: NonNullable<OpenSpec["app"]>): OpenResult;
+  state(): WebViewState;
   openTab(url?: string, cwd?: string): number;
   activateTab(id: number): boolean;
   closeTab(id: number): boolean;
   agentTouch(id: number): boolean;
   agentRelease(): void;
+  quit(): void;
   tabs(): unknown;
   targets(): Promise<unknown>;
   viewport(): { width: number; height: number } | null;
@@ -120,7 +115,6 @@ export class Registry {
   private advertise() {
     advertiseInstance(this.host.key, {
       protocolVersions: INTEROP_PROTOCOL_VERSIONS,
-      mode: this.host.interop().mode,
       pid: process.pid,
       socket: this.socketPath,
       startedAt: this.startedAt,
@@ -152,10 +146,7 @@ export class Registry {
       if (request.cmd === "interop/1/open") {
         const parsed = openSpecSchema.safeParse(request);
         if (!parsed.success) throw new Error("malformed open request");
-        const spec = parsed.data;
-        const tab = spec.app
-          ? this.host.openAppTab(spec, spec.app).tab
-          : this.host.openTab(spec.url);
+        const tab = this.host.openTab(parsed.data.url);
         connection.end(`${JSON.stringify({ id, ok: true, data: { tab } })}\n`);
         return;
       }
@@ -181,6 +172,7 @@ export class Registry {
       }
       case "targets":
         return { ...this.record(), tabs: await this.host.targets() };
+        // dont love this name
       case "activate-tab": {
         if (request.tab === undefined) throw new Error("activate-tab needs a tab id");
         if (!this.host.activateTab(request.tab)) throw new Error(`no tab ${request.tab}`);
@@ -200,6 +192,10 @@ export class Registry {
         this.host.agentRelease();
         return { ...this.record(), tabs: await this.host.targets() };
       }
+      case "quit":
+        // After this request is answered, so the caller hears back before the pipe goes.
+        setImmediate(() => this.host.quit());
+        return {};
       default:
         throw new Error(`unknown command: ${request.cmd}`);
     }

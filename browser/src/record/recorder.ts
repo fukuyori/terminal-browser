@@ -1,9 +1,13 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { captureFilmstrip } from "pixel-react";
-import type { SurfaceCapture } from "pixel-react";
-import type { BrowserController } from "../page/controller";
+import { captureFilmstrip } from "@zenbu-labs/pixel";
+import type { SurfaceCapture, WebViewHandle } from "@zenbu-labs/pixel";
+
+export interface RecordTarget {
+  readonly tabId: number;
+  handle(): WebViewHandle;
+}
 
 export interface FrameMeta {
   tMs: number;
@@ -55,21 +59,25 @@ export class Recorder {
   onCap: (() => void) | null = null;
   captureError: string | null = null;
 
-  private readonly controller: BrowserController;
+  private readonly target: RecordTarget;
+  private readonly onDebuggerMessage = (_event: unknown, method: string) => {
+    if (method === "Page.loadEventFired") this.addLoad();
+  };
   private readonly framesDir: string;
   private capture: SurfaceCapture | null = null;
   private liveFrames: number[] = [];
   private stoppedTimes: number[] = [];
   private capTimer: NodeJS.Timeout | null = null;
+  private stopFrames: (() => void) | null = null;
   private wallStart = 0;
   private stopDuration = 0;
   private stoppedFlag = false;
 
   constructor(
-    controller: BrowserController,
+    target: RecordTarget,
     readonly dir: string,
   ) {
-    this.controller = controller;
+    this.target = target;
     this.framesDir = path.join(dir, "frames");
   }
 
@@ -83,17 +91,18 @@ export class Recorder {
 
   async start(): Promise<void> {
     fs.mkdirSync(this.framesDir, { recursive: true });
-    await this.controller.attachCdp();
-    this.controller.onCdpEvent("Page.loadEventFired", () => this.addLoad());
-    this.controller.pinFrameRate(true);
-    this.controller.onFrameSubmitted = () => {
+    const view = this.target.handle();
+    await view.cdp("Page.enable");
+    view.webContents.debugger.on("message", this.onDebuggerMessage);
+    view.recording.pinFrameRate(true);
+    this.stopFrames = view.recording.onFrame(() => {
       if (!this.stoppedFlag && this.wallStart) {
         this.liveFrames.push(Date.now() - this.wallStart);
       }
-    };
-    this.capture = this.controller.surface.startCapture(this.framesDir);
+    });
+    this.capture = view.recording.start(this.framesDir);
     this.wallStart = Date.now();
-    this.controller.invalidate();
+    view.recording.invalidate();
     void this.nudgeRepaint();
     this.capTimer = setTimeout(() => {
       this.stop();
@@ -103,10 +112,11 @@ export class Recorder {
 
   private async nudgeRepaint(): Promise<void> {
     try {
-      await this.controller.cdp("Emulation.setDefaultBackgroundColorOverride", {
+      const view = this.target.handle();
+      await view.cdp("Emulation.setDefaultBackgroundColorOverride", {
         color: { r: 0, g: 0, b: 0, a: 0 },
       });
-      await this.controller.cdp("Emulation.setDefaultBackgroundColorOverride", {});
+      await view.cdp("Emulation.setDefaultBackgroundColorOverride", {});
     } catch {}
   }
 
@@ -117,10 +127,12 @@ export class Recorder {
       clearTimeout(this.capTimer);
       this.capTimer = null;
     }
-    this.controller.onFrameSubmitted = null;
+    this.stopFrames?.();
+    this.stopFrames = null;
     try {
-      this.controller.onCdpEvent("Page.loadEventFired", null);
-      this.controller.pinFrameRate(false);
+      const view = this.target.handle();
+      view.webContents.debugger.removeListener("message", this.onDebuggerMessage);
+      view.recording.pinFrameRate(false);
     } catch {}
     this.finishCapture();
   }
@@ -136,7 +148,10 @@ export class Recorder {
   }
 
   samplePointer(viewX: number, viewY: number, viewWidth: number, click: boolean) {
-    const size = this.controller.frameSize();
+    let size: { width: number; height: number } | null = null;
+    try {
+      size = this.target.handle().recording.frameSize();
+    } catch {}
     if (!size || viewWidth <= 0) return;
     const scale = size.width / viewWidth;
     if (click) this.addClick(viewX * scale, viewY * scale);

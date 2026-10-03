@@ -2,6 +2,34 @@
 
 Windows 対応フォーク (`windows-native`) を upstream `zenbu-labs/terminal-browser` v0.11.1 に追従させるための計画。
 
+## 現在の状態（2026-09-21）
+
+移行先は `windows-v0.11.1`。Pixel の pin は
+`5bb53b956ec2b9d1373e56f8c0c8869a720668bd` で、フレームモードとキー処理順序の修正を含む。
+以下の調査・作業手順には、移行前の upstream の制約や当時の未実施事項を履歴として残している。
+現在の到達点は次の記録を参照する。
+
+- [段階5の CI 記録](ci-verification.md#second-run-2026-09-21): 本体 `326c74b` で
+  ビルド・テスト・インストーラー作成・成果物アップロードが成功。ダウンロード後の
+  manifest 照合、ランチャー確認、インストーラーの起動・キャンセルも通過。
+- [実機確認](windows-device-checks.md#current-status-2026-09-21): 群Cの停止は修正済みで
+  C1〜C6通過。Ghosttyでの本番プラグイン E1〜E5・リサイズ後の入力、F・Gの確認も
+  各記録のビルドで通過。以前の予期しない終了の原因は未特定。
+- [終了問題](https://github.com/fukuyori/terminal-browser/issues/1)は再現確認が残る。
+  [WezTerm の埋め込み対応](https://github.com/fukuyori/terminal-browser/issues/2)は保留。
+- `0.11.1-win.1` を [GitHub Release](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1)
+  として公開済み。終了診断ログと
+  インストーラー名の修正を含む署名済み成果物をメンテナーが再作成し、
+  インストール・Ghostty での起動と表示と終了・アンインストールまで通過。
+  [今回のF群の記録](windows-device-checks.md#signed-package-retest-on-2026-09-21)に
+  ハッシュ・未コミット変更を含む作成元・再確認していない項目を記載した。
+  タグ起動の旧 stable CI は署名用シークレット不足と macOS/Linux の Pixel 配置不足で失敗し、
+  キャンセルした。手元の署名済み ZIP・EXE と2つのマニフェストを公開し、GitHub 側の
+  サイズ・SHA-256一致を確認した。タグは `eb594b2` のまま維持している。
+- CI を Windows の未署名検証に限定する変更を作成済み。新しい workflow の実行は未確認。
+  [現在の CI・公開手順](ci-verification.md#current-workflow)を参照。
+  以下にある署名・macOS/Linux・R2・Worker を含む stable CI の設計は旧構成の記録。
+
 ## 調査時点のリビジョン
 
 | 対象 | リビジョン |
@@ -13,7 +41,7 @@ Windows 対応フォーク (`windows-native`) を upstream `zenbu-labs/terminal-
 
 分岐点から v0.11.1 までの upstream の変更は 35 コミット、233 ファイル、+3,616 / −43,507 行。
 
-## 判明している前提
+## 調査時点で判明していた前提
 
 ### エンジンが別リポジトリに移った
 
@@ -42,7 +70,7 @@ import の対応はほぼ 1 対 1。
 | `pixel-terminals`（14 箇所） | `@zenbu-labs/pixel/terminal`（16 箇所） |
 | `./ssh` | `@zenbu-labs/pixel/ssh` |
 
-### pixel は Windows に対応していない
+### 調査対象の upstream pixel は Windows に対応していなかった
 
 - `packages/native/` にあるのは `darwin-arm64`、`darwin-x64`、`linux-arm64`、`linux-x64` のみ
 - `electron/config.json` と `.github/workflows/release.yml` の対象も macOS と Linux のみ
@@ -226,7 +254,7 @@ upstream v0.11.1 から新しいブランチを作り、フォークの変更を
 | terminal-browser | `scripts/package-windows-inno.ps1` の必須ファイル一覧 | `electron\electron.exe`（28 行目） | 4 |
 | terminal-browser | `installer/terminal-browser.iss` の `MyAppExeName`（アンインストール時のアイコン） | `electron\electron.exe`（7 行目） | 4 |
 
-フォークの `scripts/fetch-electron.mjs`（20 行目）も `electron.exe` を参照しているが、Electron を pixel から取るようになるため段階 4 で不要になる。`scripts/sign-windows.ps1` は `electron` ディレクトリの `*.exe` を列挙するので変更は要らない。
+フォークの `scripts/fetch-electron.mjs` も `electron.exe` を参照していたが、Electron を pixel から取るようになったため段階 4 で削除した。`scripts/sign-windows.ps1` は `electron` ディレクトリの `*.exe` を列挙するので変更は要らない。
 
 改名後は、Electron の解決経路ごとに `pixel.exe` から起動できることを確認する（段階 6）。
 
@@ -437,6 +465,10 @@ Git がクリーンでも、`.gitignore` で無視された生成物は残る。
    - 実行: `corepack pnpm -r typecheck` と `corepack pnpm -r test`。`store` には `test` スクリプトが無いため、型チェックをテストで代用しない
 8. `browser/src/registry.ts`、`browser/src/daemon.ts`、`store/src/paths.ts` の `ipcEndpoint` まわりが v0.11.1 の変更後も成り立つか確認する
 9. `cli/src/claude-bridge.ts` を Windows 対応する
+   - `serve` は `detached: true` で起動して `launch` の終了後も存続させる。Windows の Node/libuv は非 detached の子プロセスを親終了時に終了させるため、通常のデーモン起動の設定をそのまま使わない
+   - `launch` が自身の PID を内部引数 `--console-pid` で渡し、生存中に `serve` が Pixel の `attachWindowsConsole(pid)` で元のコンソールへ接続する。接続成功後にのみポートを通知する。失敗時は起動エラーを返し、ポートを通知しない
+   - `serve` が保持するコンソールを描画先にするため、ブラウザ起動時の `TERMINAL_BROWSER_CONSOLE_PID` は `serve` 自身の PID とする。CLI は既に渡された PID を上書きしない
+   - `cli/test/claude-bridge-launch.test.js` で、起動元終了後のブリッジ生存・元のコンソールへの所属・`/state`・`/close`・コンソール接続失敗を検証する。描画と実プラグインの操作はこの制御テストには含めない
    - `launch`（53 行目〜）で作るソケットのパスと、`Bridge.listenForPixel()`（177 行目〜）の待ち受け（203 行目の `listen`）を同じ名前付きパイプのパスにそろえ、`PIXEL_EMBED`（260 行目）にそのパスを渡す
    - 待ち受け前の `fs.rmSync`（`listenForPixel()` の 178 行目）と、終了時の `fs.rmSync`（`Bridge.close()` の 359 行目）は、Windows の名前付きパイプに対して実行しない
    - コピー要求の `pbcopy` を Windows 向けのクリップボード書き込み処理へ置き換える。日本語と複数行の文字列が保持されることを確認する
@@ -459,26 +491,40 @@ v0.11.1 の `scripts/release.sh` に合わせる。
    4. pixel をビルドする: `../pixel` で `corepack pnpm install --frozen-lockfile`、`pnpm --filter @zenbu-labs/pixel build`、`pnpm --filter @zenbu-labs/pixel build:native -- --release`
    5. terminal-browser で `corepack pnpm install --frozen-lockfile` を実行し、ビルドした pixel を `node_modules` に取り込む（`file:` 参照はインストール時にパッケージをコピーするため。`scripts/link-pixel.sh` のコメントに記載がある）。通常のインストールで取り込まれないと分かった場合は、取り込みを確実にする処理をここに入れる（下の完了条件 2）
    6. ペイロードを作る（下の項目 2 以降）。`-Sign`・`-Zip` の扱いは現行どおり
-2. ペイロードの作り方を上表に合わせる。Electron は pixel から取るため、`scripts/fetch-electron.mjs` と `browser/package.json` からの呼び出しは不要になる
+2. ペイロードの作り方を上表に合わせる。Electron は pixel から取るため、`scripts/fetch-electron.mjs` と `browser/package.json` からの呼び出しを削除した。pixel の中のネイティブパッケージと Electron の場所は `scripts/pixel-paths.mjs` が解決する（`node -e` に PowerShell のヒアストリングを渡すと引用符が失われるため、スクリプトに切り出した）
 3. `scripts/bundle.mjs` から `pixel-react`・`pixel-terminals` の別名を外し、`bundle.sh` と同じ外部指定にする
 4. `scripts/sign-windows.ps1` の署名対象 `browser\native\pixel.node` を新しい場所に変える
 5. `scripts/package-windows-inno.ps1` の必須ファイル一覧の `browser\native\pixel.node` を新しい場所に変える
 6. Electron の実行ファイル名を `pixel.exe` にそろえる: `cli/src/main.ts` の `ELECTRON_DIST_BIN`・`ELECTRON_DEV_BIN`、`scripts/build-windows.ps1` の存在確認、`scripts/package-windows-inno.ps1` の必須ファイル（`electron\pixel.exe`）、`installer/terminal-browser.iss` の `MyAppExeName`（`electron\pixel.exe`）
 7. `docs/version-update-checklist.md` に従いバージョンを `0.11.1-win.1` に更新する（`scripts/build-windows.ps1` の `Version` の既定値、README 両言語、CHANGELOG 両言語）
 
+**誰がビルドするか**
+
+配布物（`dist-release/` 配下のペイロード、ZIP、インストーラー）は Claude は作らない。
+`dist-release/terminal-browser/` は署名の対象そのものなので、`-Zip` の有無にかかわらず
+これを作る実行は配布物の作成に当たる。
+
+| 実施者 | 目的 | 実行するもの |
+|---|---|---|
+| CI（`release.yml`） | GitHub Release に登録する成果物 | タグを打つと署名付きで全部 |
+| 利用者 | 手元での確認 | `build-windows.ps1 -Zip -Sign -RequireCleanPixel` と `package-windows-inno.ps1 -Sign` |
+| Claude | スクリプトの変更 | ソースの編集のみ。ビルドは行わない |
+
+したがって下の完了条件は、**スクリプト自身が検査して満たす**形にする。人が毎回手で
+比べる前提にはしない。CI でも同じ検査が働く。
+
 **完了条件**（生成物の鮮度）
 
 1. **古い生成物を残さない** — `-RequireCleanPixel` 指定時に、`packages/pixel/dist/` と `packages/native/win32-x64/pixel.node` を削除してから作り直していること。削除対象がこの 2 つに限られていること
-2. **新しい pixel が本体に入る** — pixel 側を変更して `build-windows.ps1 -RequireCleanPixel` を再実行し、次をすべて満たすこと
-   - 確認用の変更: pixel の JavaScript に識別できる文字列を加え、ネイティブ側も変更してコミットし、`pixel.commit` を更新する。JavaScript だけの変更では lockfile が変わらないため、通常の `pnpm install` がコピーし直さない場合を確かめられる
-   - 本体の `node_modules`: `browser/` から `require.resolve` で辿れる `@zenbu-labs/pixel` の JavaScript に、加えた文字列が入っている
-   - 最終ペイロード: `dist-release/terminal-browser/browser/dist/main.js` と `cli/dist/main.js` のバンドルに、加えた文字列が入っている
-   - **署名前**: 次の 3 つの `pixel.node` の SHA-256 が一致する。`-Sign` で署名するとペイロード内の `pixel.node` の内容が変わり、pixel 側の未署名ファイルとは一致しなくなるため、必ず署名の前に比較する（`-Sign` を付けずに実行した結果で比較するか、`-Sign` 付きの実行では `build-windows.ps1` が署名を呼ぶ前に比較する）
-     - `../pixel/packages/native/win32-x64/pixel.node`
-     - `browser/` から `require.resolve` で辿れる `@zenbu-labs/pixel-native-win32-x64` の `pixel.node`
-     - `dist-release/terminal-browser/browser/node_modules/@zenbu-labs/pixel-native-win32-x64/pixel.node`
-   - **署名後**: `-Sign` 付きで実行したとき、ペイロード内の `pixel.node` と Electron のバイナリ（`pixel.exe` を含む）の署名が有効である（`Get-AuthenticodeSignature` が `Valid` を返す。`scripts/sign-windows.ps1` は署名後にこれを検査する）
-   - 通常の `pnpm install --frozen-lockfile` で更新されなかった場合は、手順 1 の 5 に取り込みを確実にする処理を入れ、この確認を通してから完了とする
+2. **新しい pixel が本体に入る** — `build-windows.ps1` が署名を呼ぶ前に、次の 3 つの `pixel.node` の SHA-256 を比較し、一致しなければ停止すること。署名はペイロード内の `pixel.node` を書き換えるので、比較は必ずその前に行う
+   - `../pixel/packages/native/win32-x64/pixel.node`
+   - `browser/` から辿れる `@zenbu-labs/pixel-native-win32-x64` の `pixel.node`（`scripts/pixel-paths.mjs native`）
+   - `dist-release/terminal-browser/browser/node_modules/@zenbu-labs/pixel-native-win32-x64/pixel.node`
+3. **署名が付く** — `-Sign` 付きで実行したとき、ペイロード内の `pixel.node` と Electron のバイナリ（`pixel.exe` を含む）の署名が有効である（`Get-AuthenticodeSignature` が `Valid` を返す。`scripts/sign-windows.ps1` は署名後にこれを検査する）
+
+JavaScript 側の取り込みは、`file:` 参照が `pnpm install` でコピーされることに依存する。
+2 の検査はネイティブについてこれを確かめるもので、JavaScript が古いままなら
+ネイティブも古いままになるため、同じ検査で気づける。
 
 ### 段階 5: CI を 2 リポジトリ構成にする
 
@@ -505,12 +551,112 @@ v0.11.1 の `scripts/release.sh` に合わせる。
    7. `terminal-browser/` で `package-windows-inno.ps1`（既存の署名手順と `-Sign` の受け渡しは維持する）
    8. 成果物をアップロードする（既存の 223〜230 行目）。すべてのテストが成功したあとに限る
 5. **テスト**
+   - 本体の型チェック前に `corepack pnpm --filter pixel-store build` を実行し、失敗時は停止する。ペイロードの esbuild は `store/src` から直接バンドルするため、依存パッケージの型解決に必要な `store/dist/index.d.ts` は別途生成する
    - 現行の `corepack pnpm -r typecheck` を `terminal-browser/` で引き続き実行する。`store` を含む全パッケージの型チェックを維持する
    - 169 行目の `cargo test --manifest-path engine/Cargo.toml --workspace` を、`pixel/engine/Cargo.toml` を対象にする形へ置き換える
    - `pixel/` で `pnpm --filter @zenbu-labs/pixel typecheck` と `pnpm --filter @zenbu-labs/pixel test`、`terminal-browser/` で `corepack pnpm -r test`
    - 型チェック・各テストの失敗時は停止し、インストーラー作成と成果物のアップロードへ進まない
 6. **lockfile** — 段階 3 の 6 でコミットした `pnpm-lock.yaml` が `file:` 参照と一致していないと `--frozen-lockfile` が失敗する。pixel を更新したときは、terminal-browser 側の `pnpm-lock.yaml` と `pixel.commit` を一緒に更新する
 7. **成果物** — アップロードの `path` は手順 2 のとおり変える。成果物名（`windows-release-windows-x64`）と、それを受け取る後続ジョブの `pattern: windows-release-*` は変えなくてよい
+
+実施後の `windows` ジョブの流れ:
+
+| # | ステップ | 作業ディレクトリ |
+|---|---|---|
+| 1 | terminal-browser を `terminal-browser/` へ取得 | — |
+| 2 | `pixel.commit` を読む（40 桁の書式を検査する） | `terminal-browser` |
+| 3 | `fukuyori/pixel` を その コミットで `pixel/` へ取得 | — |
+| 4 | pnpm・Node・Rust を用意 | — |
+| 5 | agent-browser のキャッシュ鍵を解決 | `terminal-browser` |
+| 6 | Inno Setup を導入 | — |
+| 7 | 署名証明書を準備 | — |
+| 8 | `build-windows.ps1 -Zip -RequireCleanPixel`（署名鍵があれば `-Sign`） | `terminal-browser` |
+| 9 | テスト（pixel の typecheck・test・`cargo test`、pixel-store の build、本体の typecheck・test） | ワークスペース直下 |
+| 10 | `package-windows-inno.ps1` | `terminal-browser` |
+| 11 | 成果物をアップロード | — |
+
+テストを 8 のあとに置いたのは、`build-windows.ps1` が両方のチェックアウトに
+`pnpm install --frozen-lockfile` を行い pixel をビルドするため。先にテストを走らせると
+インストール前の状態を見ることになる。9 が失敗すれば 10・11 には進まない。
+
+`CARGO_TARGET_DIR` はジョブ全体に設定されているので、pixel の `build:native` と
+9 の `cargo test` は同じターゲットディレクトリを使う。
+
+#### 状態: 2回目の Windows CI 実行検証は通過
+
+実行手順と見るべき点は `docs/ci-verification.md` にまとめた。以下はその要点。
+
+2026-09-21 の [初回 CI](https://github.com/fukuyori/terminal-browser/actions/runs/35551427952)
+は本体 `bcac8d6` と Pixel `5bb53b9` で実行した。Windows ペイロードと ZIP の
+ビルド、Pixel の型チェック・JS テスト（51 通過・15 スキップ）、Rust テスト
+（268 + 51 通過・1 ignored）まで成功した。本体の型チェックは `store/dist` がなく
+`pixel-store` を解決できずに失敗したため、直前に store のビルドを追加した。
+生成物を退避したローカル検証では同じ失敗を再現し、追加後の型チェックとテスト
+（88 通過・1 スキップ）が通過した。
+
+同日の [2回目の CI](https://github.com/fukuyori/terminal-browser/actions/runs/35552876822)
+は本体 `326c74b` と同じ Pixel pin で成功した。prepare は4秒、Windows ジョブは
+21分57秒。ペイロード・ZIP、本体の型チェック・テスト（88通過・1スキップ）、
+インストーラー作成、成果物アップロードまで通過した。
+段階5の Windows CI 実行検証は通過として扱い、署名・stable 公開経路の検証とは分ける。
+
+**検証の前提: 取得対象のコミットが push されていること**
+
+手順 3 は `pixel.commit` の SHA で `fukuyori/pixel` を checkout する。この SHA が
+リモートに無ければ、`actions/checkout` は `No commit found` で失敗する。
+2026-09-20 の調査時点では `fukuyori/pixel` に `windows-v0.11.1` ブランチは無く、
+`f9b8746`・`2ad2ead`・`7002209` はローカルにしか無い。
+
+当時の未 push 状態を解消する順序は次のとおりだった。現在は以下の両方を push 済みで、
+2回目の CI 実行も成功している。
+
+1. pixel の `windows-v0.11.1` を push（`pixel.commit` の指す SHA がリモートに載る）
+2. terminal-browser の `windows-v0.11.1` を push
+3. ワークフローを動かす
+
+`fukuyori/pixel` は公開リポジトリなので、`actions/checkout` に追加の PAT は要らない。
+
+2026-09-21 に、本体 `05fef3e` と Pixel の pin
+`5bb53b956ec2b9d1373e56f8c0c8869a720668bd` が GitHub に存在することを確認した。
+上記の未 push という前提は解消済み。後続の `verify_windows=true` オプションでは
+Windows のビルド・テスト・Actions 成果物保存だけを行い、署名・タグ作成・R2 公開・
+Worker 配備を省く。このモードは `bcac8d6` で push・初回実行済み。
+store のビルド順序の修正は `326c74b` で push し、2回目の実行で通過した。
+ローカルでの workflow 検証と、GitHub 上での実行検証は区別する。
+
+**どう動かすか**
+
+`release.yml` のトリガーと、GitHub Release への登録可否。
+
+| 起動方法 | `channel` | GitHub Release 登録 |
+|---|---|---|
+| `workflow_dispatch` + `verify_windows=true` | `dev`（Windows 検証のみ） | されない |
+| タグ push（`v*` / `*-win.*`） | `stable` | される |
+| `workflow_dispatch` + `bump` が `patch`/`minor`/`major` | `stable`（タグを自動作成して push する） | される |
+| `workflow_dispatch` + `bump=none`（既定） | `dev` | されない |
+| `main` への push | `dev` | されない |
+| その他のブランチへの push | — | トリガーされない |
+
+検証では `verify_windows=true` を明示する。`bump=none`・`deploy_worker=false`・
+ブランチ指定が必須で、それ以外の組み合わせはタグ作成前に停止する。
+このモードでは macOS/Linux・Worker・Release のジョブと署名処理を省く。
+
+`verify_windows` を指定しない従来の手動実行では、`bump=none` でも R2 に公開する。
+GitHub Release が作られないことと、外部公開されないことは区別する。
+
+**CI で確認したことと残件**
+
+- Pixel の pin 検査、ワークスペース外の `CARGO_TARGET_DIR` を使う native ビルド、
+  native の3コピーのハッシュ一致検査は成功した。
+- 署名・macOS/Linux ビルド・Worker・Release の各処理は skipped だった。
+- 初回は約16分で失敗、2回目は Windows ジョブが21分57秒で完走した。
+- ダウンロードした ZIP・インストーラーは manifest のサイズ・SHA-256 と一致し、
+  ZIP の展開と同梱ランチャーの `--version`・`--help` も通過した。
+  詳細は `docs/ci-verification.md` に記録した。CI インストーラーの最初の画面の表示は
+  利用者が確認し、インストールせずキャンセルして閉じる操作も確認済み。
+  CI 成果物からのインストール・アンインストールは未確認。
+  未署名・バージョン `0.0.0.0` の検証用で、配布には使わない。
+- タグ・bump 指定による stable 経路（署名・R2 公開・GitHub Release 作成）は未検証。
 
 ### 段階 6: 実機確認
 
@@ -525,12 +671,17 @@ v0.11.1 の `scripts/release.sh` に合わせる。
 - `pixel.exe` からの起動を、開発環境・配布パッケージ（`dist-release/terminal-browser`）・インストール後の 3 か所で確認すること
 - スタートメニューのショートカットからの起動
 
-## 未確認事項とリスク
+## 計画時点の調査課題とリスク（履歴）
+
+以下は移行前に挙げた調査項目。現在の未完了作業の一覧ではない。
+描画・配布物の配置・本番プラグインの基本操作は後続の CI と実機記録に結果があり、
+再ビルド時の native の一致はビルドスクリプトで検査している。
+個別の低水準 API の挙動、別 OS、将来の upstream 変更まで検証済みとは扱わない。
 
 - 標準 Electron 44.2.0 での描画（段階 1 で確認する）
 - 名前付きパイプに対する `fs.existsSync` の挙動（Node 24.14.1 でのみ確認済み。段階 1 で実際のランタイムで確認する）
 - `appLog` の出力先
-- pixel を再ビルドしたあと、terminal-browser の `pnpm install --frozen-lockfile` が lockfile に変化が無くても `file:` 参照のコピーを新しいビルドで更新するか（段階 4 の完了条件 2 で確認する）
+- pixel を再ビルドしたあと、terminal-browser の `pnpm install --frozen-lockfile` が lockfile に変化が無くても `file:` 参照のコピーを新しいビルドで更新するか。2026-09-20 に手動で確認した範囲では更新された（pixel を変更してコミットし、`pixel.commit` を更新して再ビルドしたところ、`node_modules` と両方のバンドルに識別文字列が入り、ネイティブ 3 か所のハッシュが揃って変わった）。以後は段階 4 の完了条件 2 の検査が `build-windows.ps1` の中で毎回これを確かめる
 - 展開済み Electron を再利用するときの検証方法（段階 1 の手順 3 で確認する）
 - 配布後のネイティブパッケージ解決と Electron の配置（段階 4 で `release.sh` に合わせ、段階 6 で確認する）
 - テストファイルの移植量（3 方向マージは未試算）

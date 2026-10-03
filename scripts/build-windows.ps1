@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.8.0-win.1",
+    [string]$Version = "0.13.4-win.1",
     [string]$Channel = "windows",
     [string]$AgentBrowserPath = "",
     [switch]$Sign,
@@ -26,46 +26,63 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     throw "Windows x64 is required"
 }
 
-if (Test-Path -LiteralPath $out) {
+$pixel = Join-Path $root "pixel"
+
+# tsc leaves the output of deleted sources behind, and a failed native build
+# leaves the last one, so these two are made again from scratch.
+foreach ($stale in @("packages\pixel\dist", "packages\native\win32-x64\pixel.node")) {
+    $path = Join-Path $pixel $stale
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+}
+
+Push-Location $root
+try {
+    corepack pnpm install --frozen-lockfile
+    if ($LASTEXITCODE -ne 0) { throw "install failed" }
+    corepack pnpm --filter "@zenbu-labs/pixel" build
+    if ($LASTEXITCODE -ne 0) { throw "pixel build failed" }
+    corepack pnpm --filter "@zenbu-labs/pixel" build:native -- --release
+    if ($LASTEXITCODE -ne 0) { throw "pixel native build failed" }
+} finally {
+    Pop-Location
+}
+
+# Only the unpacked payload is rebuilt. Archives and installers of other
+# versions stay beside it, since they may be what a release was published from.
+if (Test-Path -LiteralPath $stage) {
     $resolvedRoot = [IO.Path]::GetFullPath($root).TrimEnd('\')
-    $resolvedOut = [IO.Path]::GetFullPath($out).TrimEnd('\')
-    if (-not $resolvedOut.StartsWith("$resolvedRoot\", [StringComparison]::OrdinalIgnoreCase)) {
-        throw "refusing to remove output outside the repository: $resolvedOut"
+    $resolvedStage = [IO.Path]::GetFullPath($stage).TrimEnd('\')
+    if (-not $resolvedStage.StartsWith("$resolvedRoot\", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "refusing to remove output outside the repository: $resolvedStage"
     }
-    Remove-Item -LiteralPath $out -Recurse -Force
+    Remove-Item -LiteralPath $stage -Recurse -Force
 }
 
 $directories = @(
     "bin",
     "cli\dist",
     "browser\dist",
-    "browser\native",
+    "browser\node_modules\@zenbu-labs",
     "electron",
     "runtime",
     "agent-browser\bin",
     "skills",
     "assets\fonts",
-    "assets\react-grab"
+    "assets\react-grab",
+    "assets\search",
+    "assets\chromium"
 )
 foreach ($directory in $directories) {
     New-Item -ItemType Directory -Path (Join-Path $stage $directory) -Force | Out-Null
 }
 
-Push-Location (Join-Path $root "engine")
-try {
-    cargo build -p pixel-node --release
-    if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
-} finally {
-    Pop-Location
+# pixel looks its engine binary up in this package at run time, so the payload
+# carries the package rather than a loose library.
+$nativePackage = node (Join-Path $root "scripts\pixel-paths.mjs") native
+if ($LASTEXITCODE -ne 0 -or -not $nativePackage -or -not (Test-Path -LiteralPath (Join-Path $nativePackage "pixel.node"))) {
+    throw "@zenbu-labs/pixel-native-win32-x64 is not installed in browser/"
 }
-
-$native = if ($env:CARGO_TARGET_DIR) {
-    Join-Path $env:CARGO_TARGET_DIR "release\pixel_node.dll"
-} else {
-    Join-Path $root "engine\target\release\pixel_node.dll"
-}
-if (-not (Test-Path -LiteralPath $native)) { throw "missing native library: $native" }
-Copy-Item -LiteralPath $native -Destination (Join-Path $stage "browser\native\pixel.node")
+Copy-Item -LiteralPath $nativePackage -Destination (Join-Path $stage "browser\node_modules\@zenbu-labs\pixel-native-win32-x64") -Recurse -Force
 
 $esbuild = Join-Path $root "node_modules\esbuild\bin\esbuild"
 if (-not (Test-Path -LiteralPath $esbuild)) {
@@ -96,10 +113,16 @@ foreach ($asset in @("index.global.js", "logo.png")) {
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "assets\react-grab")
 }
 
-$electronDist = Join-Path $root "browser\node_modules\electron\dist"
-$electron = Join-Path $electronDist "electron.exe"
-if (-not (Test-Path -LiteralPath $electron)) {
-    throw "missing Windows Electron; run corepack pnpm install first"
+foreach ($assets in @("search", "chromium")) {
+    Copy-Item -Path (Join-Path $root "assets\$assets\*") -Destination (Join-Path $stage "assets\$assets") -Force
+}
+
+$electronDist = node (Join-Path $root "scripts\pixel-paths.mjs") electron
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $electronDist ".zenbu-electron-sha256"))) {
+    throw "pixel has not installed its electron; run corepack pnpm install first"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $electronDist "pixel.exe"))) {
+    throw "missing electron\pixel.exe in $electronDist"
 }
 Copy-Item -Path (Join-Path $electronDist "*") -Destination (Join-Path $stage "electron") -Recurse -Force
 
@@ -131,6 +154,23 @@ Set-Content -LiteralPath (Join-Path $stage "bin\terminal-browser.cmd") -Value $l
 Set-Content -LiteralPath (Join-Path $stage "VERSION") -Value $Version -Encoding ascii
 Set-Content -LiteralPath (Join-Path $stage "CHANNEL") -Value $Channel -Encoding ascii
 
+# The engine binary travels from where it is built, through what browser/
+# resolves, into the payload, and a stale copy at either step is silent. Compare
+# them before signing, which rewrites the payload's copy and would hide the answer.
+$engineCopies = [ordered]@{
+    "pixel build"  = Join-Path $pixel "packages\native\win32-x64\pixel.node"
+    "node_modules" = Join-Path $nativePackage "pixel.node"
+    "payload"      = Join-Path $stage "browser\node_modules\@zenbu-labs\pixel-native-win32-x64\pixel.node"
+}
+$engineHashes = [ordered]@{}
+foreach ($where in $engineCopies.Keys) {
+    $engineHashes[$where] = (Get-FileHash -LiteralPath $engineCopies[$where] -Algorithm SHA256).Hash
+}
+if (($engineHashes.Values | Select-Object -Unique).Count -ne 1) {
+    $detail = ($engineHashes.Keys | ForEach-Object { "  $_`: $($engineHashes[$_])" }) -join "`n"
+    throw "the engine binary differs between where it was built and where it is used:`n$detail"
+}
+
 # Before the zip, so a portable copy carries the signatures too. The installer
 # signs itself at packaging time, once these are inside it.
 if ($Sign) {
@@ -143,7 +183,7 @@ if (-not $Zip) {
 }
 
 $archive = Join-Path $out "terminal-browser-$Version-$target.zip"
-Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal
+Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal -Force
 $item = Get-Item -LiteralPath $archive
 $manifest = [ordered]@{
     version = $Version

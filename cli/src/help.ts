@@ -20,32 +20,8 @@ Options:
   --size <fraction>     How much of the space the split takes (0.2 to 0.95)
   --ssh <user@host>     Perform all network requests through a remote server, then
                         proxy the result back to the local terminal-browser instance
-  --ssh-bundle <dir>    Install and execute a bundle on a remote Unix server. This is useful with
-                        --app-mode and --ssh, allowing an application server to run remotely
-  --ssh-bundle-dir <dir>
-                        Remote installation base for --ssh-bundle. Defaults to
-                        \${XDG_DATA_HOME:-~/.local/share}/terminal-browser/bundles
-  --preload=<path>      Run a script inside the context of a web page before it loads (uses electron's preload feature under the hood, runs in an isolated world).
-                        terminal-browser specific api's are exposed on globalThis.terminalBrowser
-                        {
-                          theme: () => { background: [r,g,b], foreground: [r,g,b], ansi: ([r,g,b] | null)[] } | null, // null until the terminal reports its colors
-                          onTheme: (cb: (theme: Theme) => void) => () => void, // returns unsubscribe
-                          quit: () => void // closes this browser window
-                        }
-                        --terminal-browser-session=<key> is passed as extra arguments to the renderer process, available via process.argv
-  --main-script=<path>  Run a node.js script in the same process as the browser (this is an electron main process)
-  --open-tabs-in-popup-stack Links that would open a new tab open a popup over the
-                        page instead.
   --allow-clipboard-read
                         Lets websites read from clipboard.
-  --no-toolbar          No toolbar or tab strip
-  --no-shortcuts        No browser shortcuts
-  --no-context-menu     No right-click menu
-  --no-overlays         No toasts or HUDs drawn over the page
-  --no-frame            No border or padding around the web page
-  --app-mode            Enables configuration to disable terminal-browser features to make optimal for application embedding
-  --app-name=<name>     The name of the application
-  --app-id=<id>         The identifier of the application
   --no-merge            Do not open the terminal-browser instance as a tab in a neighbor terminal-browser
 
 
@@ -74,7 +50,6 @@ Options:
     body: `
 Sets up configuration to make terminal-browser work best, this includes:
 - installing agent skills
-- enabling configuration settings in terminals that is required for terminal-browser to work
 
 `,
   },
@@ -132,11 +107,41 @@ Remove application metadata from ~/.local/share/terminal-browser-interop/apps/<i
   },
   shutdown: {
     summary: "Stop the daemon",
-    usage: "terminal-browser shutdown",
+    usage: "terminal-browser shutdown [--all]",
     body: `
 Every browser in a terminal pane shares one browser process as an optimization. To
 fully quit terminal-browser operations, you can use this shutdown command. This will
 close all open browsers.
+
+  --all    Quit the browsers in every pane, each the way its quit key does, so
+           every terminal is put back. Ones that do not quit are killed.
+`,
+  },
+  config: {
+    summary: "Get and set settings and shortcuts",
+    usage: "terminal-browser config <list|get|set|unset|path> [key] [value]",
+    body: `
+Reads and writes the settings.json and shortcuts.json files.
+
+Settings are addressed by their settings.json key. Shortcuts are addressed as
+shortcuts.<command> and take a comma separated list of key chords, or none to
+unbind. unset restores the default.
+
+Commands:
+  list                 List every setting and shortcut with its current value
+  get <key>            Print the value of one key
+  set <key> <value>    Set a key
+  unset <key>          Restore a key to its default
+  path                 Print the paths of the config files
+
+Examples:
+  terminal-browser config list
+  terminal-browser config get search.engine
+  terminal-browser config set updates.check off
+  terminal-browser config set shortcuts.tab.new "cmd+t,ctrl+t"
+  terminal-browser config set shortcuts.record.toggle none
+  terminal-browser config unset render.fps
+  terminal-browser config path
 `,
   },
   action: {

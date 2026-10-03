@@ -23,9 +23,9 @@ $iss = Join-Path $root "installer\terminal-browser.iss"
 
 $required = @(
     "bin\terminal-browser.cmd",
-    "browser\native\pixel.node",
+    "browser\node_modules\@zenbu-labs\pixel-native-win32-x64\pixel.node",
     "agent-browser\bin\agent-browser.exe",
-    "electron\electron.exe",
+    "electron\pixel.exe",
     "runtime\node.exe",
     "skills\manifest",
     "VERSION"
@@ -37,10 +37,14 @@ foreach ($relativePath in $required) {
     }
 }
 
+$payloadVersion = (Get-Content -LiteralPath (Join-Path $payload "VERSION") -Raw).Trim()
+if ($payloadVersion -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+    throw "invalid package version for the installer filename: $payloadVersion"
+}
+
 if (-not $Version) {
     # A Windows file version is four numbers, so the fork revision of 0.8.0-win.1
     # becomes the fourth one: 0.8.0.1. A dev build has no number to carry over.
-    $payloadVersion = (Get-Content -LiteralPath (Join-Path $payload "VERSION") -Raw).Trim()
     $match = [regex]::Match($payloadVersion, '^v?(?<base>\d+\.\d+\.\d+)(?:-win\.(?<fork>\d+))?$')
     if ($match.Success) {
         $fork = if ($match.Groups["fork"].Success) { $match.Groups["fork"].Value } else { "0" }
@@ -74,7 +78,7 @@ if (-not $IsccPath -or -not (Test-Path -LiteralPath $IsccPath -PathType Leaf)) {
 }
 
 New-Item -ItemType Directory -Path $output -Force | Out-Null
-$baseName = "terminal-browser-$Version-windows-x64"
+$baseName = "terminal-browser-$payloadVersion-windows-x64"
 $options = @("/DMyAppVersion=$Version", "/O$output", "/F$baseName")
 if ($Sign) {
     $signer = Join-Path $PSScriptRoot "sign-windows.ps1"
@@ -99,7 +103,8 @@ if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
 
 $item = Get-Item -LiteralPath $installer
 $manifest = [ordered]@{
-    version = $Version
+    version = $payloadVersion
+    installerVersion = $Version
     channel = "installer"
     platform = "windows-x64"
     file = $item.Name

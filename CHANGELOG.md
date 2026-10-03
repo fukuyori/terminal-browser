@@ -4,6 +4,113 @@
 
 Notable changes to the Windows fork of terminal-browser are documented here.
 
+## 0.13.4-win.1 (2026-10-03)
+
+- Stop running copies before installing over them or uninstalling. The installer
+  and uninstaller first run the new `terminal-browser shutdown --all`, which asks
+  the browser in every pane to quit the way its quit key does so each terminal
+  is put back, then end whatever still runs from the install directory, such as
+  the agent-browser daemon and the Claude Code bridge. Before this, an uninstall
+  left those processes running and their files behind.
+
+- Move to upstream v0.13.4: settings and shortcut config files with a settings
+  screen, WebMCP, the toolbar React Grab button, and the reworked presenter that
+  lowers CPU use. Pixel now lives in this repository under `pixel/`, so the
+  separate Pixel checkout, `pixel.commit` and `-RequireCleanPixel` are gone.
+
+- Send no telemetry from this fork. Upstream's usage events and crash reports
+  are disabled in the build and their settings are removed.
+
+- Skip upstream's update check on Windows, whose release feed only lists macOS
+  and Linux builds.
+
+- Keep `Ctrl+Shift+Q` as a default quit key alongside `Ctrl+Q`, since upstream's
+  configurable shortcuts match modifiers exactly.
+
+- Leave earlier ZIPs and installers in `dist-release` when building. The build
+  replaces only the unpacked payload and the files of the version being built,
+  and signing touches only that version's installer. The two manifests describe
+  the latest build.
+
+- Limit CI to Windows build/test/installer verification with read-only repository
+  permissions. Publish maintainer-signed packages separately through GitHub Releases.
+
+## 0.11.1-win.1 (2026-09-21)
+
+- Use the payload version in both ZIP and installer filenames. Keep the numeric
+  Windows version separate as `installerVersion` in the installer manifest.
+
+- Build `pixel-store` before the Windows CI typecheck so clean runners can
+  resolve its generated declarations.
+
+- Add a Windows-only CI verification mode that builds and tests both repositories
+  and uploads ZIP/installer artifacts without signing, tagging or publishing.
+
+- Record CLI, daemon and bridge lifecycle events with timestamps, process IDs
+  and session IDs. Distinguish a session-close notification from a lost daemon
+  connection, and record shutdown requests, signals and idle expiry. The earlier
+  unexpected browser exit remains unexplained. Rotate each process's logs at
+  1 MiB with two generations, and remove stopped-process logs beyond seven days,
+  128 files or 32 MiB. Live processes' logs are protected.
+
+- Send multi-character Claude IME commits through text insertion instead of
+  shared clipboard pastes. Requires the matching Pixel key-ordering change.
+  Repeated split-commit checks and physical IME entry/replacement passed
+  against the real browser.
+
+- Combine Claude Client size and input notifications so pointer events cannot
+  replace a pending resize notification in the same frame. Regression checks
+  and a Ghostty shrink/enlarge retest passed, including IME input and clicking
+  after enlargement.
+
+- Remove stale Claude Code browser images after the frame connection or browser
+  is lost, show browser termination, and log process exits for diagnosis.
+
+- Fix Japanese text corruption when copying from the Claude Code browser pane
+  on Windows. Read UTF-8 explicitly before setting the clipboard, replacing
+  `clip.exe`'s content-dependent encoding detection. Real clipboard regression
+  checks include Japanese, line breaks, emoji and empty text.
+
+- Move the Claude Code plugin to `Image` / `ui.blit`, with a separate Client
+  for input. Frames travel through the Pixel host connection and an authenticated
+  local bridge. Large images use a reduced RGBA image to stay within the inline
+  API limit; IME commits preserve multiple characters. Resize and hide/reopen
+  checks and production Ghostty E1–E5/resize checks passed. The earlier unexpected
+  exit remains open. Pixel's required frame-mode and key-ordering changes are
+  included in the pinned `5bb53b9` revision.
+
+- Keep the Windows Claude Code bridge alive after its launcher exits. The bridge
+  attaches to the caller's console before reporting readiness and reports a startup
+  error if attachment fails. This requires the matching Pixel native build.
+- Add regression coverage for launcher exit, console retention, HTTP requests,
+  bridge shutdown, and startup without an accessible console. Actual Claude Code
+  plugin rendering and interaction also passed the Ghostty device checks;
+  sustained-use reliability remains a separate check.
+
+### Migration baseline
+
+Based on upstream terminal-browser v0.11.1. The entries below describe changes since
+`0.8.0-win.1`.
+
+- **The engine moved to its own project.** Upstream split the rendering engine and the
+  terminal integrations into [zenbu-labs/pixel](https://github.com/zenbu-labs/pixel). This
+  fork now builds against a pixel checkout beside it, named by `pixel.commit`, with the
+  Windows support carried over into that project.
+- **Windows runs stock Electron.** Frames reach a Windows terminal as bitmaps, which the
+  published Electron already draws, so no patched build is needed.
+- **The Claude Code bridge works on Windows.** It speaks a named pipe instead of a socket
+  file, starts detached and then attaches to the console that called it, and copies text
+  through `clip.exe` with the encoding it reads, so Japanese and line breaks survive.
+- **A terminal that names no pane no longer shares one daemon.** The console scope reads
+  Ghostty's surface id as well as WezTerm's and Windows Terminal's.
+- **Removed with upstream.** The app mode flags (`--app-mode`, `--preload`, `--main-script`,
+  `--app-name`, `--app-id`, `--open-tabs-in-popup-stack`, `--no-toolbar`, `--no-shortcuts`,
+  `--no-context-menu`, `--no-overlays`, `--no-frame`) and `--ssh-bundle` with
+  `--ssh-bundle-dir` are gone; `--ssh` stays. Building an application this way moves to
+  pixel.
+- **Scripts that were bash are node.** `scripts/plugin-types.sh` became
+  `scripts/plugin-types.mjs`, which resolves an executable Node can start on Windows.
+
 ## 0.8.0-win.1
 
 Based on upstream terminal-browser v0.8.0. The entries below describe changes since

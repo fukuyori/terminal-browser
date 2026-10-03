@@ -1,27 +1,19 @@
-import type { BrowserController } from "../page/controller";
-import type { DevtoolsAction } from "../page/devtools";
-import { initialBrowserState } from "../page/types";
-import type { BrowserState } from "../page/types";
+import { createRef } from "react";
+import type { RefObject } from "react";
+import type { OpenWindowDecision, WebViewHandle, WebViewState } from "@zenbu-labs/pixel";
+
 import type { TabRow } from "../ui/types";
 import { displayUrl } from "../url";
-
-export interface TabApp {
-  name: string | null;
-  id: string;
-}
-
-export interface TabOptions {
-  app?: TabApp;
-  partition?: string | null;
-}
+import { DOC_SCHEME } from "../pages/scheme";
 
 export interface Tab {
   readonly id: number;
-  state: BrowserState;
-  controller: BrowserController;
+  readonly url: string;
+  readonly ref: RefObject<WebViewHandle>;
+  state: WebViewState;
   targetId: string | null;
-  app: TabApp | null;
   agentControlAt: number | null;
+  devtools: boolean;
 }
 
 export interface TabTarget {
@@ -30,28 +22,16 @@ export interface TabTarget {
   title: string;
   active: boolean;
   targetId: string | null;
-  app?: TabApp | null;
   timeOrigin?: number | null;
   agentControlled: boolean;
 }
 
-
 export interface TabHost {
-  createController(
-    url: string,
-    visible: boolean,
-    onState: (state: BrowserState) => void,
-    options: TabOptions & { tabId: number },
-  ): BrowserController;
   onActivated(): void;
-  onActiveState(state: BrowserState, urlChanged: boolean): void;
-  onCursorChanged(): void;
-  onDevtoolsChanged(): void;
-  onDevtoolsAction(action: DevtoolsAction): void;
+  onActiveState(state: WebViewState, urlChanged: boolean): void;
   onPageMenu(params: Electron.ContextMenuParams): void;
   onTabsChanged(): void;
-  onTabOpened(opener: BrowserController, url: string): void;
-  onTabClosed(id: number): void;
+  onTabOpened(opener: Tab, url: string): void;
   tabSwitchAllowed(): boolean;
   requestRender(): void;
 }
@@ -69,19 +49,17 @@ export class TabManager {
   constructor(
     private readonly host: TabHost,
     private readonly fallbackUrl: string,
-  ) {
-
-  }
+  ) {}
 
   get active(): Tab | null {
     return this.tabs.find((tab) => tab.id === this.activeId) ?? null;
   }
 
-  get activeController(): BrowserController | null {
-    return this.active?.controller ?? null;
+  get activeHandle(): WebViewHandle | null {
+    return this.active?.ref.current ?? null;
   }
 
-  get activeState(): BrowserState | null {
+  get activeState(): WebViewState | null {
     return this.active?.state ?? null;
   }
 
@@ -89,65 +67,103 @@ export class TabManager {
     return this.tabs.length;
   }
 
-  
-  create(url: string, activate = true, options: TabOptions = {}): Tab {
-    const tab = {
+  all(): readonly Tab[] {
+    return this.tabs;
+  }
+
+  create(url: string, activate = true): Tab {
+    const tab: Tab = {
       id: this.seq++,
-      state: initialBrowserState(url),
+      url,
+      ref: createRef<WebViewHandle>(),
+      state: {
+        url,
+        title: "",
+        loading: true,
+        canGoBack: false,
+        canGoForward: false,
+        findMatches: null,
+        zoom: 1,
+        favicon: null,
+      },
       targetId: null,
-      app: options.app ?? null,
       agentControlAt: null,
-    } as Tab;
-    this.attachController(tab, url, activate, options);
+      devtools: false,
+    };
     this.tabs.push(tab);
     if (activate) this.activate(tab.id);
     this.host.onTabsChanged();
+    this.host.requestRender();
     return tab;
   }
 
-  private attachController(tab: Tab, url: string, visible: boolean, options: TabOptions) {
-    tab.controller = this.host.createController(url, visible, (state) => {
-      const urlChanged = state.url !== tab.state.url;
-      tab.state = state;
-      if (tab.id === this.activeId) this.host.onActiveState(state, urlChanged);
-      this.host.requestRender();
-    }, { ...options, tabId: tab.id });
-    tab.controller.onCursorChange = () => {
-      if (tab.id === this.activeId) this.host.onCursorChanged();
-    };
-    tab.controller.onOpenTab = (openUrl, activateNew) => {
-      this.create(openUrl, activateNew);
-      this.host.onTabOpened(tab.controller, openUrl);
-    };
-    tab.controller.onPopupChange = () => this.host.requestRender();
-    tab.controller.onClosed = () => this.host.onTabClosed(tab.id);
-    tab.controller.onDevtoolsChange = () => {
-      if (tab.id === this.activeId) this.host.onDevtoolsChanged();
-      else this.host.requestRender();
-    };
-    tab.controller.onDevtoolsAction = (action) => {
-      if (tab.id === this.activeId) this.host.onDevtoolsAction(action);
-    };
-    tab.controller.onContextMenu = (params) => {
-      if (tab.id === this.activeId) this.host.onPageMenu(params);
-    };
-    tab.targetId = null;
-    void tab.controller.targetId().then((targetId) => {
-      tab.targetId = targetId;
-      this.host.onTabsChanged();
-    });
+  get(id: number): Tab | null {
+    return this.tabs.find((tab) => tab.id === id) ?? null;
+  }
+
+  stateChanged(id: number, state: WebViewState) {
+    const tab = this.get(id);
+    if (!tab) return;
+    const urlChanged = state.url !== tab.state.url;
+    tab.state = state;
+    if (!tab.targetId) void this.resolveTargetId(tab);
+    if (tab.id === this.activeId) this.host.onActiveState(state, urlChanged);
+    this.host.requestRender();
+  }
+
+  openWindow(id: number, details: Electron.HandlerDetails): OpenWindowDecision {
+    const tab = this.get(id);
+    if (!tab) return "deny";
+    const wantsTab = details.disposition === "foreground-tab" || details.disposition === "background-tab";
+    if (!wantsTab) {
+      // a page-opened window (window.open with features) is a readable
+      // same-origin child; never allow one onto a local file preview, or the
+      // opener could read another local file's DOM through it
+      if (details.url.startsWith(`${DOC_SCHEME}://`)) return "deny";
+      return "popup";
+    }
+    this.create(details.url, details.disposition === "foreground-tab");
+    this.host.onTabOpened(tab, details.url);
+    return "deny";
+  }
+
+  contextMenu(id: number, params: Electron.ContextMenuParams) {
+    if (id === this.activeId) this.host.onPageMenu(params);
+  }
+
+  private async resolveTargetId(tab: Tab) {
+    const handle = tab.ref.current;
+    if (!handle) return;
+    try {
+      const info = (await handle.cdp("Target.getTargetInfo")) as {
+        targetInfo?: { targetId?: string };
+      };
+      tab.targetId = info.targetInfo?.targetId ?? null;
+    } catch {
+      tab.targetId = null;
+    }
+    if (tab.targetId) this.host.onTabsChanged();
+  }
+
+  private async fingerprint(tab: Tab): Promise<number | null> {
+    const handle = tab.ref.current;
+    if (!handle) return null;
+    try {
+      const result = (await handle.cdp("Runtime.evaluate", {
+        expression: "performance.timeOrigin",
+        returnByValue: true,
+      })) as { result?: { value?: number } };
+      return typeof result.result?.value === "number" ? result.result.value : null;
+    } catch {
+      return null;
+    }
   }
 
   activate(id: number) {
-    const tab = this.tabs.find((t) => t.id === id);
+    const tab = this.get(id);
     if (!tab || (id !== this.activeId && !this.host.tabSwitchAllowed())) return;
-    if (this.activeId !== id) {
-      const previous = this.tabs.find((t) => t.id === this.activeId);
-      previous?.controller.setVisible(false);
-    }
     this.activeId = id;
-    tab.controller.setVisible(true);
-    tab.controller.focusContent();
+    tab.ref.current?.focus();
     this.host.onActivated();
     this.host.requestRender();
   }
@@ -155,8 +171,7 @@ export class TabManager {
   close(id: number) {
     const at = this.tabs.findIndex((t) => t.id === id);
     if (at < 0) return;
-    const [closed] = this.tabs.splice(at, 1);
-    closed.controller.stop();
+    this.tabs.splice(at, 1);
     if (this.activeId === id) {
       const fallback = this.tabs[Math.min(at, this.tabs.length - 1)];
       if (fallback) this.activate(fallback.id);
@@ -171,7 +186,7 @@ export class TabManager {
   }
 
   touchAgentControl(id: number): boolean {
-    const tab = this.tabs.find((t) => t.id === id);
+    const tab = this.get(id);
     if (!tab) return false;
     const fresh = tab.agentControlAt == null;
     tab.agentControlAt = Date.now();
@@ -225,20 +240,24 @@ export class TabManager {
     this.agentSweep = null;
   }
 
-  soleAppTab(): boolean {
-    return this.tabs.length === 1 && this.tabs[0].app != null;
-  }
-
   findByContents(contentsId: number): Tab | null {
-    return this.tabs.find((tab) => tab.controller.hasContents(contentsId)) ?? null;
+    return (
+      this.tabs.find((tab) => {
+        try {
+          return tab.ref.current?.webContents.id === contentsId;
+        } catch {
+          return false;
+        }
+      }) ?? null
+    );
   }
 
-  stateFor(controller: BrowserController): BrowserState | null {
-    return this.tabs.find((tab) => tab.controller === controller)?.state ?? null;
+  findByHandle(handle: WebViewHandle | null): Tab | null {
+    if (!handle) return null;
+    return this.tabs.find((tab) => tab.ref.current === handle) ?? null;
   }
 
   private label(tab: Tab): string {
-    if (tab.app?.name) return tab.app.name;
     return tab.state.title || displayUrl(tab.state.url);
   }
 
@@ -246,9 +265,8 @@ export class TabManager {
     return this.tabs.map((tab) => ({
       id: tab.id,
       title: this.label(tab),
-      favicon: tab.app ? null : tab.state.favicon,
+      favicon: tab.state.favicon,
       active: tab.id === this.activeId,
-      app: tab.app != null,
       agentControlled: tab.agentControlAt != null,
     }));
   }
@@ -260,7 +278,6 @@ export class TabManager {
       title: tab.state.title,
       active: tab.id === this.activeId,
       targetId: tab.targetId,
-      app: tab.app,
       agentControlled: tab.agentControlAt != null,
     }));
   }
@@ -268,28 +285,22 @@ export class TabManager {
   async targets(): Promise<TabTarget[]> {
     return Promise.all(
       this.tabs.map(async (tab) => {
-        if (!tab.targetId) tab.targetId = await tab.controller.targetId();
+        if (!tab.targetId) await this.resolveTargetId(tab);
         return {
           id: tab.id,
           url: tab.state.url,
           title: tab.state.title,
           active: tab.id === this.activeId,
           targetId: tab.targetId,
-          app: tab.app,
-          timeOrigin: await tab.controller.fingerprint(),
+          timeOrigin: await this.fingerprint(tab),
           agentControlled: tab.agentControlAt != null,
         };
       }),
     );
   }
 
-  eachController(fn: (controller: BrowserController) => void) {
-    for (const tab of this.tabs) fn(tab.controller);
-  }
-
   stopAll() {
     this.stopAgentSweep();
-    for (const tab of this.tabs) tab.controller.stop();
     this.tabs = [];
     this.activeId = 0;
   }

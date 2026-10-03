@@ -6,9 +6,10 @@ import type {
   PointerEvent,
   Surface,
   WheelEvent,
-} from "pixel-react";
-import type { BrowserController } from "../page/controller";
-import { zoomDirection } from "../page/zoom";
+} from "@zenbu-labs/pixel";
+import { listStep } from "shared";
+import type { RecordTarget } from "./recorder";
+import { zoomDirection } from "../zoom";
 import { toolbarSize } from "../ui/markup-canvas";
 import { recordBarCluster, recordBarMetrics } from "../ui/record-bar";
 import type { ChromeLayout } from "../ui/types";
@@ -34,7 +35,6 @@ import {
   unionRects,
 } from "./model";
 import type { CropScope, HandleId, MarkupObject, Rect, Tool, Vec } from "./model";
-import { isRecordKey, listStep } from "../session/keybindings";
 import { newRecordingDir } from "./paths";
 import {
   CLICK_PULSE_MS,
@@ -60,6 +60,8 @@ export interface RecordHost {
   setClipboard(text: string): void;
   toast(name: string, state: "done" | "failed", detail?: string): void;
   finished(): void;
+  isRecordKey(event: EngineKeyEvent): boolean;
+  recordKeyLabel(): string;
 }
 
 const IDLE_GAP_MS = 3000;
@@ -99,7 +101,7 @@ export class RecordSession {
   readonly actions: RecordActions;
 
   private readonly host: RecordHost;
-  readonly controller: BrowserController;
+  readonly target: RecordTarget;
   private readonly recorder: Recorder;
   private readonly markup = new MarkupStore();
 
@@ -147,19 +149,19 @@ export class RecordSession {
   private sampleTimes: number[] | null = null;
   private toolbarGrab: Vec | null = null;
 
-  static async create(host: RecordHost, controller: BrowserController): Promise<RecordSession> {
-    const session = new RecordSession(host, controller);
+  static async create(host: RecordHost, target: RecordTarget): Promise<RecordSession> {
+    const session = new RecordSession(host, target);
     await session.recorder.start();
     return session;
   }
 
-  private constructor(host: RecordHost, controller: BrowserController) {
+  private constructor(host: RecordHost, target: RecordTarget) {
     this.host = host;
-    this.controller = controller;
+    this.target = target;
     this.surface = host.root.createSurface();
-    this.recorder = new Recorder(controller, newRecordingDir(host.page().url));
+    this.recorder = new Recorder(target, newRecordingDir(host.page().url));
     this.recorder.onCap = () => {
-      this.host.toast(`recording capped at ${MAX_RECORDING_MS / 60000} minutes`, "done");
+      this.host.toast(`Recording capped at ${MAX_RECORDING_MS / 60000} minutes`, "done");
       this.stopReview();
     };
     this.actions = {
@@ -266,6 +268,14 @@ export class RecordSession {
     } catch {}
   }
 
+  private frameSize(): { width: number; height: number } | null {
+    try {
+      return this.target.handle().recording.frameSize();
+    } catch {
+      return null;
+    }
+  }
+
   view(): RecordView {
     const frames = this.recorder.frames;
     const duration = Math.max(1, this.recorder.durationMs());
@@ -293,13 +303,14 @@ export class RecordSession {
       durationMs: duration,
       currentKey: this.scrub == null ? null : this.stateKey(),
       pageUrl: this.host.page().url,
+      recordKey: this.host.recordKeyLabel(),
       shots: this.shotsView(),
       shotThumb: keyframes.length > 0 ? this.thumbSurface : null,
       keyframeCount: keyframes.length,
       filmstrip: this.stripSurface,
       trim: this.trimRange && { ...this.trimRange },
       frameAspect: (() => {
-        const base = frames[0] ?? this.controller.frameSize();
+        const base = frames[0] ?? this.frameSize();
         if (!base) return 0.625;
         const display = base;
         return display.height / Math.max(1, display.width);
@@ -357,7 +368,7 @@ export class RecordSession {
   handleKey(event: EngineKeyEvent): boolean {
     if (event.kind === "release") return false;
     if (this.scrub == null) {
-      if (isRecordKey(event) && !this.recorder.stopped) {
+      if (this.host.isRecordKey(event) && !this.recorder.stopped) {
         this.stopReview();
         return true;
       }
@@ -379,7 +390,7 @@ export class RecordSession {
     }
     const cmd = event.mods.super || event.mods.ctrl;
     const plainCtrl = event.mods.ctrl && !event.mods.super && !event.mods.alt;
-    if (isRecordKey(event)) {
+    if (this.host.isRecordKey(event)) {
       this.discard();
       return true;
     }
@@ -734,7 +745,7 @@ export class RecordSession {
   private ensureFrames(): boolean {
     this.stopCapture();
     if (this.recorder.frames.length > 0) return true;
-    this.host.toast("nothing captured", "failed");
+    this.host.toast("Nothing captured", "failed");
     this.discard();
     return false;
   }
@@ -923,7 +934,7 @@ export class RecordSession {
     const wasStopped = this.recorder.stopped;
     this.recorder.stop();
     if (!wasStopped && this.recorder.captureError) {
-      this.host.toast(`capture failed: ${this.recorder.captureError}`, "failed");
+      this.host.toast(`Capture failed: ${this.recorder.captureError}`, "failed");
     }
   }
 
@@ -969,7 +980,7 @@ export class RecordSession {
     const dir = this.recorder.dir;
     const manifestPath = writeProcessingManifest(dir, page);
     host.setClipboard(manifestPath);
-    host.toast("copied to clipboard", "done", manifestPath.replace(os.homedir(), "~"));
+    host.toast("Copied to clipboard", "done", manifestPath.replace(os.homedir(), "~"));
     compositeRecording({
       recorder: this.recorder,
       markup: this.markup,
@@ -982,7 +993,7 @@ export class RecordSession {
       try {
         writeFailedManifest(dir, page, message);
       } catch {}
-      host.toast(`recording failed: ${message}`, "failed");
+      host.toast(`Recording failed: ${message}`, "failed");
     });
     this.finish();
   }

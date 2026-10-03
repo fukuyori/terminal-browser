@@ -1,17 +1,24 @@
 {
-  "name": "terminal-graphics-engine",
+  "name": "terminal-browser",
   "private": true,
   "scripts": {
     "build": "pnpm -r build",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows-inno.ps1",
-    "browser": "pnpm --filter terminal-browser start",
+    "browser": "node scripts/dev.mjs",
+    "types": "node scripts/plugin-types.mjs",
+    "postinstall": "node scripts/plugin-types.mjs --if-missing",
     "build:dist": "scripts/release.sh \"local-$(git rev-parse --short HEAD)\"",
     "install:dist": "scripts/install-local.sh",
     "dist": "pnpm build:dist && pnpm install:dist",
     "release:patch": "scripts/tag-release.sh patch",
     "release:minor": "scripts/tag-release.sh minor",
-    "release:major": "scripts/tag-release.sh major"
+    "release:major": "scripts/tag-release.sh major",
+    "monitor": "pnpm --filter terminal-browser-monitor start",
+    "pixel:build": "pnpm --filter @zenbu-labs/pixel build",
+    "pixel:build:native": "pnpm --filter @zenbu-labs/pixel build:native --",
+    "pixel:typecheck": "pnpm --filter './pixel/**' typecheck",
+    "pixel:test": "pnpm --filter './pixel/**' test"
   },
   "packageManager": "pnpm@10.13.1",
   "devDependencies": {

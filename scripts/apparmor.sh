@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-BINARY="${1:-$(dirname "$0")/../electron/electron}"
+BINARY="${1:-$(dirname "$0")/../electron/pixel}"
 
 [ "$(uname -s)" = Linux ] || exit 0
 [ -z "${TERMINAL_BROWSER_SKIP_APPARMOR:-}" ] || exit 0

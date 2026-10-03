@@ -9,24 +9,29 @@ Windowsターミナル内で動作する本物のブラウザです。
 ## オリジナル版との関係
 
 このリポジトリは、[zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser)
-をWindows向けに移植したフォークです。現在のリリースは上流v0.8.0を基にしています。このREADMEは
+をWindows向けに移植したフォークです。現在の開発ブランチは上流v0.13.4を基にしています。このREADMEは
 Windowsフォークだけを対象としています。
 
-| 項目 | 上流v0.8.0 | このWindowsフォーク |
+| 項目 | 上流v0.13.4 | このWindowsフォーク |
 | --- | --- | --- |
 | 実行環境 | オリジナルのターミナル・プロセス連携 | Win32 Console、ConPTY、名前付きパイプ、Windowsパスを使用するWindows x64移植 |
 | 描画 | kitty graphicsによる描画 | WezTermのファイルフレーム転送とWindows固有のiTerm2 PNGフォールバック |
-| 配布 | オリジナルのリリース処理 | Inno Setupインストーラー、バージョン付きポータブルZIP、Authenticode署名、Windowsリリース自動化 |
+| 配布 | オリジナルのリリース処理 | メンテナーが署名したInno Setupインストーラーとバージョン付きポータブルZIP、別途Windows CIで検証 |
 | SSH・セットアップ | オリジナルのSSH・skill処理 | Windows OpenSSHと`tar.exe`への対応、Windows互換のskill setup |
-| バージョン | `v0.8.0` | 上流の基準版とWindows改訂番号を表す`0.8.0-win.1` |
+| バージョン | `v0.13.4` | 上流の基準版とWindows改訂番号を表す`0.13.4-win.1` |
 
 上流から取り込んだ機能と各Windowsリリース固有の変更は、
 [変更履歴](CHANGELOG.ja.md)を参照してください。
 
+現在のバージョンは `0.13.4-win.1`（2026-10-03）です。リリースは
+[リリースページ](https://github.com/fukuyori/terminal-browser/releases)にあり、いずれもローカルで
+作成・署名・検証した ZIP とインストーラーです。CI の未署名成果物は検証用です。[CI結果](docs/ci-verification.md)と
+[実機確認記録](docs/windows-device-checks.md)を参照してください。
+
 ## Windows対応（実験的）
 
-このフォークはWindows x64ネイティブビルドを提供します。PowerShell 7とWezTerm nightlyで動作確認
-しています。
+このフォークはWindows x64ネイティブビルドを提供します。PowerShellから、Windows版Ghosttyでの
+実機確認と、WezTermでの通常のブラウザの表示・終了を確認しています。
 
 Windows版には次が含まれます。
 
@@ -43,7 +48,10 @@ Windows版には次が含まれます。
 
 ### 必要な環境
 
-WezTerm nightlyをインストールしてください。最速の描画経路を使用するには、`wezterm.lua`でkitty
+通常のブラウザにはWindows版GhosttyまたはWezTerm nightlyを使用します。Claude Codeプラグインの
+埋め込みImage表示はGhosttyとClaude Code 2.1.278で確認済みで、WezTerm対応は
+[保留中](https://github.com/fukuyori/terminal-browser/issues/2)です。
+WezTermのファイルフレーム経路を使用するには、`wezterm.lua`でkitty
 keyboardとkitty graphicsを有効にしてから、WezTermを再起動します。
 
 ```lua
@@ -89,9 +97,16 @@ terminal-browser https://example.com
 
 ### Windowsでの終了
 
-terminal-browserを表示しているペインで`Ctrl+Q`を押します。`Ctrl+Q`をWezTermのリーダーキーに割り当てて
-いる場合は、`Ctrl+Shift+Q`を使用します。terminal-browserを起動したPowerShellセッションでは
-`Ctrl+C`でも終了できます。
+terminal-browserを表示しているペインで`Ctrl+Q`を押します。Ghosttyのように端末自身が`Ctrl+Q`を
+使う場合や、`Ctrl+Q`をWezTermのリーダーキーに割り当てている場合は、`Ctrl+Shift+Q`を使用します。
+terminal-browserを起動したPowerShellセッションでは`Ctrl+C`でも終了できます。
+
+すべてのペインのブラウザをまとめて終了するには、任意のシェルで次を実行します。各ブラウザは終了キーと
+同じ手順で終了するので、それぞれの端末は元の状態に戻ります。
+
+```powershell
+terminal-browser shutdown --all
+```
 
 ### Windowsからのアンインストール
 
@@ -99,10 +114,43 @@ terminal-browserを表示しているペインで`Ctrl+Q`を押します。`Ctrl
 選択します。スタートメニューのアンインストール用ショートカットからも同じ操作ができます。
 アンインストール時には、インストーラーが追加したユーザー`PATH`の項目も削除されます。
 
+インストーラーとアンインストーラーは、最初に実行中のプロセスを止めます。`terminal-browser shutdown --all`を
+実行し、そのあとインストール先から動いている残りのプロセス（agent-browserの常駐プロセスなど）を
+終了します。`0.13.4-win.1`より前のリリースには終了を依頼する機能が無いため、それらから上書き
+インストールする場合は、先にブラウザを閉じてください。
+
+### Windowsでの設定
+
+`Ctrl+,`で設定画面を開きます。設定とショートカットは、`%USERPROFILE%\.config\terminal-browser`の
+`settings.json`と`shortcuts.json`に保存されます。場所は`XDG_CONFIG_HOME`または
+`TERMINAL_BROWSER_CONFIG_DIR`で変更できます。`terminal-browser config list`で全項目を表示でき、
+`config get`、`config set`、`config unset`、`config path`でシェルから読み書きできます。
+
+### テレメトリと更新確認
+
+このフォークはテレメトリを送信しません。上流の利用状況イベントとクラッシュ報告はビルドで無効にして
+あり、その設定項目も表示されません。Windowsでは、上流のリリース情報への更新確認も行いません。
+上流のリリース情報はmacOSとLinuxのビルドだけを掲載しているためです。Windows版の新しいリリースは
+[リリースページ](https://github.com/fukuyori/terminal-browser/releases)で確認してください。
+
+### Claude Codeプラグイン
+
+[導入手順](/claude-code-plugin/README.md)
+
+Windows では端末のコンソールから起動してください。ブリッジは起動元の終了後もそのコンソールへの
+接続を保持し、接続できない場合は起動エラーを返します。CLI と対応する Pixel ネイティブビルドが
+必要です。本番プラグインのGhostty実機確認では、描画・IME入力・日本語と複数行のコピー・
+サイズ変更後の入力・非表示と再表示・セッション終了時の後片付けが通過しました。
+以前発生した[予期しないブラウザ終了](https://github.com/fukuyori/terminal-browser/issues/1)の原因は
+未特定で、これらの通過は長時間利用での信頼性を確定するものではありません。
+
 ### Windows版のソースビルド
 
+描画エンジンのPixelは、このリポジトリの `pixel/` にあります。ビルドスクリプトが
+ワークスペースの依存をインストールし、Pixelとネイティブアドオンを最初からビルドします。
+リポジトリのルートで実行します。
+
 ```powershell
-corepack pnpm install --frozen-lockfile
 .\scripts\build-windows.ps1
 .\scripts\package-windows-inno.ps1
 ```
@@ -114,7 +162,7 @@ corepack pnpm install --frozen-lockfile
 .\scripts\build-windows.ps1 -Zip
 ```
 
-ZIPは任意作成で、サイズは約190 MBです。インストーラー作成には必要ありません。固定バージョンの
+ZIPは任意作成で、確認済みCIビルドのサイズは約209 MBです。インストーラー作成には必要ありません。固定バージョンの
 `agent-browser`は自動的にビルドされ、同梱されます。別の実行ファイルを使用する場合だけ
 `-AgentBrowserPath C:\path\to\agent-browser.exe`を指定します。
 
@@ -122,16 +170,27 @@ ZIPは任意作成で、サイズは約190 MBです。インストーラー作�
 `dist-release\terminal-browser-<version>-windows-x64.exe`です。インストーラーは英語と日本語、
 ユーザー単位のインストール、ユーザー`PATH`の変更、WezTermショートカットに対応しています。
 
+この例は未署名の開発用成果物を作成します。配布用はメンテナーが両スクリプトに `-Sign` を付けて作成します。
+[バージョン・リリース確認項目](docs/version-update-checklist.md)を参照してください。
+2026-09-21 に、メンテナーが終了診断ログとインストーラー名の修正を含む署名済み成果物を再作成しました。
+インストール、Ghostty での起動・表示・終了、アンインストールの確認は通過しています。
+成果物のハッシュと今回再確認していない項目は、[署名済みパッケージの再確認記録](docs/windows-device-checks.md#signed-package-retest-on-2026-09-21)を参照してください。
+
 ### Windows版のバージョン
 
 Windowsフォークのバージョンは、上流バージョンとフォークの改訂番号を組み合わせます。たとえば
-`0.8.0-win.1`は、上流v0.8.0を基にした最初のWindowsリリースです。
+`0.13.4-win.1`は、上流v0.13.4を基にした最初のWindowsリリースです。
 
 既定値は`scripts\build-windows.ps1`の`Version`で設定します。一時的に変更する場合は`-Version`を
 指定します。この値は`VERSION`へ書き込まれ、`terminal-browser --version`で表示されます。
 
-Inno Setupでは4要素の数値バージョンが必要なため、`0.8.0-win.1`はインストーラー内で`0.8.0.1`に
+Inno Setupでは4要素の数値バージョンが必要なため、`0.13.4-win.1`はインストーラー内で`0.13.4.1`に
 なります。この形式以外のバージョンでは、インストーラーのバージョンとして`0.0.0.0`を使用します。
+ZIP と EXE のファイル名は本体のバージョンで揃え、
+`terminal-browser-0.13.4-win.1-windows-x64.zip` と
+`terminal-browser-0.13.4-win.1-windows-x64.exe` になります。
+インストーラーのマニフェストは `version` に本体のバージョン、`installerVersion` に
+Windows 用の数値バージョンを記録します。作成スクリプトの `-Version` は数値バージョンだけを上書きします。
 
 `terminal-browser upgrade`はWindowsフォークを自動更新しません。Windowsで実行すると処理を中止し、
 このフォークのリリースページを案内します。
@@ -221,9 +280,10 @@ terminal-browser action --browser 90107-1 --tab 2 --follow -- fill @e3 "hello"
 
 | 操作 | ショートカット |
 | --- | --- |
-| 終了 | `Ctrl+Q`。`Ctrl+Q`がWezTermのリーダーキーの場合は`Ctrl+Shift+Q` |
+| 終了 | `Ctrl+Q`。端末が`Ctrl+Q`を使う場合は`Ctrl+Shift+Q` |
 | 新しいタブ | `Ctrl+T` |
-| コマンドパレット | `Ctrl+K`または`Alt+K` |
+| コマンドパレット | `Ctrl+K`。端末が`Ctrl+K`を使う場合は`Alt+K` |
+| 設定 | `Ctrl+,` |
 | ページ内検索 | `Ctrl+Shift+F` |
 | 次／前の一致項目 | `Enter`／`Shift+Enter` |
 | 戻る／進む | `Ctrl+[`／`Ctrl+]` |
@@ -233,6 +293,9 @@ terminal-browser action --browser 90107-1 --tab 2 --follow -- fill @e3 "hello"
 | 記録レビューの完了 | `Ctrl+Enter` |
 | エージェントへ送る要素を選択 | `Ctrl+G` |
 | ポップアップまたはオーバーレイを閉じる | `Escape` |
+
+これらは既定値です。ショートカットは修飾キーの完全一致で判定され、設定画面または`shortcuts.json`で
+変更できます。
 
 ## 動作の仕組み
 
@@ -261,50 +324,7 @@ SSHセッション内でterminal-browserを直接実行することもできま�
 経由で送る必要があります。また、kitty graphics protocolの
 [ローカルクライアント最適化](https://sw.kovidgoyal.net/kitty/graphics-protocol/#local-client)は使用できません。
 
-WindowsではOpenSSH Clientと`tar.exe`が`PATH`に必要です。SSH設定のホストエイリアスも使用できます。
-`--ssh-bundle`の接続先はUnixリモートです。Windowsでは複数のSSH接続を開く場合があるため、鍵認証または
-`ssh-agent`を推奨します。
-
-## アプリモード
-
-terminal-browserを使用し、ブラウザ技術でターミナルアプリを構築できます。実際の使用例は
-[terminal-code](https://github.com/zenbu-labs/terminal-code)を参照してください。
-
-terminal-browserを開くときに`--app-mode`を指定します。任意指定の`--preload`と`--main-script`では、
-Electronの[preload script](https://www.electronjs.org/docs/latest/tutorial/tutorial-preload)とメインプロセスを
-使用します。
-
-`terminal-browser open`で使用できるアプリ関連オプションは次のとおりです。
-
-```text
-  --preload=<path>      ページ読み込み前に、分離されたworldでElectronのpreload scriptを実行します。
-                        terminal-browser固有APIをglobalThis.terminalBrowserで公開します。
-                        {
-                          theme: () => { background: [r,g,b], foreground: [r,g,b], ansi: ([r,g,b] | null)[] } | null,
-                          onTheme: (cb: (theme: Theme) => void) => () => void,
-                          quit: () => void
-                        }
-                        --terminal-browser-session=<key>はレンダラープロセスのprocess.argvへ渡されます。
-  --main-script=<path>  Electronメインプロセス内でNode.jsスクリプトを実行します。
-  --open-tabs-in-popup-stack
-                        新しいタブで開くリンクを、ページ上のポップアップとして開きます。
-  --allow-clipboard-read
-                        Webサイトによるクリップボードの読み取りを許可します。
-  --no-toolbar          ツールバーとタブバーを表示しません。
-  --no-shortcuts        ブラウザショートカットを無効にし、キー入力をページへ渡します。
-  --no-context-menu     右クリックメニューを表示しません。
-  --no-overlays         トーストやHUDをページ上に表示しません。
-  --no-frame            枠と余白をなくし、ページをペイン全体に表示します。
-  --app-mode            --no-toolbar --no-shortcuts
-                        --no-context-menu --no-overlays --no-frame
-                        --allow-clipboard-read --open-tabs-in-popup-stackの短縮指定です。
-  --ssh-bundle <dir>    リモートサーバーへバンドルをインストールして実行します。
-                        --app-modeおよび--sshと組み合わせて、リモートでアプリケーション
-                        サーバーを実行し、その出力をSSH経由で表示できます。
-  --ssh-bundle-dir <dir>
-                        --ssh-bundleのリモートインストール先です。既定値は
-                        ${XDG_DATA_HOME:-~/.local/share}/terminal-browser/bundlesです。
-```
+WindowsではOpenSSH Clientが`PATH`に必要です。SSH設定のホストエイリアスも使用できます。
 
 ## コントリビューション
 
@@ -318,7 +338,7 @@ Electronの[preload script](https://www.electronjs.org/docs/latest/tutorial/tuto
 
 terminal-browser CLIの一部のサブコマンドは、ターミナルまたはマルチプレクサーのスクリプト機能を使用
 します。別のターミナルに対応する場合は、
-[既存の実装](https://github.com/zenbu-labs/terminal-browser/tree/main/terminals/src/terminals)を参照してください。
+[Pixel側の端末実装](pixel/packages/pixel/src/terminal/terminals)を参照してください。
 
 ## コミュニティ
 

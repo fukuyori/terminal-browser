@@ -1,12 +1,26 @@
-import type { EngineInfo } from "pixel-react";
-import type { DevtoolsDock } from "pixel-store";
-import { snapToCssGrid, type BrowserSurfaceLayout } from "../page/types";
+import type { DevtoolsDock, EngineInfo } from "@zenbu-labs/pixel";
+
+export interface SurfaceLayout {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale: number;
+}
+
+function snapToCssGrid(width: number, height: number, scale: number) {
+  const css = {
+    width: Math.max(1, Math.floor(width / scale)),
+    height: Math.max(1, Math.floor(height / scale)),
+  };
+  return { width: Math.round(css.width * scale), height: Math.round(css.height * scale) };
+}
 import type { ChromeLayout } from "../ui/types";
 
 export interface SessionLayout {
   chrome: ChromeLayout;
-  surface: BrowserSurfaceLayout;
-  devtools: BrowserSurfaceLayout | null;
+  surface: SurfaceLayout;
+  devtools: SurfaceLayout | null;
 }
 
 export interface DevtoolsPlacement {
@@ -75,17 +89,13 @@ export function recordBarHeight(info: EngineInfo): number {
 export function computeLayout(
   info: EngineInfo,
   scale: number,
-  hideToolbar: boolean,
-  frameless: boolean,
   devtools: DevtoolsPlacement | null,
   recordBar = 0,
 ): SessionLayout {
-  const toolbarHeight = hideToolbar
-    ? 0
-    : Math.min(info.height - info.cellHeight, Math.round(info.basePx * 2.1));
-  const pad = frameless ? 0 : Math.round(info.basePx * 0.45);
-  const padLeft = frameless ? 0 : Math.round(info.basePx * 0.2);
-  const padBottom = frameless ? 0 : Math.round(info.basePx * 0.2);
+  const toolbarHeight = Math.min(info.height - info.cellHeight, Math.round(info.basePx * 2.1));
+  const pad = Math.round(info.basePx * 0.45);
+  const padLeft = Math.round(info.basePx * 0.2);
+  const padBottom = Math.round(info.basePx * 0.2);
   const chrome: ChromeLayout = {
     width: info.width,
     height: info.height,
@@ -99,7 +109,6 @@ export function computeLayout(
       height: Math.max(1, info.height - toolbarHeight - padBottom - recordBar),
     },
     devtools: null,
-    frame: !frameless,
     rem: info.basePx,
   };
   const gap = Math.max(2, Math.round(info.basePx * 0.25));

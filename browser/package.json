@@ -4,24 +4,24 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "postinstall": "node ../scripts/fetch-electron.mjs && node ../scripts/copy-react-grab.mjs",
+    "postinstall": "node ../scripts/copy-react-grab.mjs",
     "build": "tsc -p tsconfig.json",
-    "build:engine": "pnpm --filter pixel-react build",
-    "start": "pnpm build:engine && pnpm build && pnpm --filter terminal-browser-cli build && node ../cli/dist/main.js",
+    "start": "pnpm build && pnpm --filter terminal-browser-cli build && node ../cli/dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "tsc -p tsconfig.json && node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "pixel-react": "workspace:*",
-    "pixel-store": "workspace:*",
-    "pixel-terminals": "workspace:*",
+    "@zenbu-labs/pixel": "workspace:*",
+    "micromark": "^4.0.2",
+    "micromark-extension-gfm": "^3.0.0",
+    "shared": "workspace:*",
     "react": "^18.3.1",
-    "react-grab": "0.2.0"
+    "react-grab": "0.2.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
-    "electron": "43.3.0",
     "typescript": "^5.5.0"
   }
 }

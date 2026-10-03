@@ -16,20 +16,23 @@ case "$(uname -s)-$(uname -m)" in
 esac
 
 rm -rf "$OUT"
-mkdir -p "$STAGE"/{bin,cli/dist,browser/dist,browser/native,electron,agent-browser/bin,assets/fonts,scripts}
+mkdir -p "$STAGE"/{bin,cli/dist,browser/dist,browser/node_modules/@zenbu-labs,electron,agent-browser/bin,assets/fonts,scripts}
 
-(cd "$ROOT/engine" && cargo build -p pixel-node --release)
-if [ -n "$DARWIN_ARCH" ]; then
-  NATIVE_LIB=libpixel_node.dylib
-else
-  NATIVE_LIB=libpixel_node.so
+# pixel resolves its engine binary and scroll helper from this package at runtime;
+# both come from the pixel/ workspace packages, built by pixel:build:native
+NATIVE_PKG="$(node -e '
+  const lib = require.resolve("@zenbu-labs/pixel/package.json", { paths: [process.argv[1]] });
+  const pkg = require.resolve(`@zenbu-labs/pixel-native-${process.argv[2]}/package.json`, { paths: [require("path").dirname(lib)] });
+  process.stdout.write(require("fs").realpathSync(require("path").dirname(pkg)));
+' "$ROOT/browser" "$TARGET" 2>/dev/null || true)"
+if [ -z "$NATIVE_PKG" ] || [ ! -f "$NATIVE_PKG/pixel.node" ]; then
+  echo "refusing to build: @zenbu-labs/pixel-native-$TARGET has no pixel.node; run pnpm --filter @zenbu-labs/pixel build:native -- --release" >&2
+  exit 1
 fi
-cp "${CARGO_TARGET_DIR:-$ROOT/engine/target}/release/$NATIVE_LIB" "$STAGE/browser/native/pixel.node"
-
-# the engine bakes in a path to its build directory, which only exists on this machine
+cp -RL "$NATIVE_PKG" "$STAGE/browser/node_modules/@zenbu-labs/pixel-native-$TARGET"
 if [ -n "$DARWIN_ARCH" ]; then
-  swiftc -O -target "$DARWIN_ARCH-apple-macos11" "$ROOT/engine/crates/pixel-core/native-scroll-helper.swift" \
-    -o "$STAGE/bin/native-scroll-helper"
+  cp "$NATIVE_PKG/native-scroll-helper" "$STAGE/bin/native-scroll-helper"
+  rm -f "$STAGE/browser/node_modules/@zenbu-labs/pixel-native-$TARGET/native-scroll-helper"
 fi
 
 AGENT_BROWSER_BIN="$(node "$ROOT/scripts/agent-browser.mjs" --path)"
@@ -49,29 +52,61 @@ node "$ROOT/scripts/copy-react-grab.mjs"
 mkdir -p "$STAGE/assets/react-grab"
 cp "$ROOT/assets/react-grab/"* "$STAGE/assets/react-grab/"
 
-ELECTRON_DIST="$(node -e 'const p=require("path");console.log(p.join(p.dirname(require.resolve("electron/package.json",{paths:[process.argv[1]]})),"dist"))' "$ROOT/browser")"
+mkdir -p "$STAGE/assets/search"
+cp "$ROOT/assets/search/"* "$STAGE/assets/search/"
+
+mkdir -p "$STAGE/assets/chromium"
+cp "$ROOT/assets/chromium/"* "$STAGE/assets/chromium/"
+
+ELECTRON_DIST="$(node -e '
+  const p = require("path");
+  const lib = require.resolve("@zenbu-labs/pixel/package.json", { paths: [process.argv[1]] });
+  console.log(p.join(p.dirname(lib), "electron", "dist"));
+' "$ROOT/browser")"
 if [ ! -f "$ELECTRON_DIST/.zenbu-electron-sha256" ]; then
-  echo "refusing to build: installed electron does not come from https://github.com/zenbu-labs/electron-releases" >&2
+  echo "refusing to build: pixel has not installed its patched electron (run pnpm install)" >&2
   exit 1
+fi
+FRAMEWORK_BINARY="$ELECTRON_DIST/Electron.app/Contents/Frameworks/Electron Framework.framework/Electron Framework"
+if [ -n "$DARWIN_ARCH" ] && [ -e "$FRAMEWORK_BINARY" ] && [ ! -L "$FRAMEWORK_BINARY" ]; then
+  echo "electron bundle lost its symlinks; re-extracting" >&2
+  rm -rf "$ELECTRON_DIST"
+  node "$(dirname "$ELECTRON_DIST")/../scripts/postinstall.mjs"
+  if [ ! -L "$FRAMEWORK_BINARY" ]; then
+    echo "refusing to build: electron framework is still not a proper bundle after re-extraction" >&2
+    exit 1
+  fi
 fi
 if [ -n "$DARWIN_ARCH" ]; then
   APP="$STAGE/electron/terminal-browser.app"
   ditto "$ELECTRON_DIST/Electron.app" "$APP"
-  mv "$APP/Contents/MacOS/Electron" "$APP/Contents/MacOS/terminal-browser"
+  mv "$APP/Contents/MacOS/pixel" "$APP/Contents/MacOS/terminal-browser"
   /usr/libexec/PlistBuddy \
     -c "Set :CFBundleExecutable terminal-browser" \
     -c "Set :CFBundleName terminal-browser" \
     -c "Set :CFBundleDisplayName terminal-browser" \
     -c "Set :CFBundleIdentifier dev.zenbu.terminal-browser" \
-    -c "Add :LSUIElement bool true" \
     "$APP/Contents/Info.plist" >/dev/null
   ELECTRON_EXE="electron/terminal-browser.app/Contents/MacOS/terminal-browser"
   NATIVE_SCROLL='export NATIVE_SCROLL_HELPER="${NATIVE_SCROLL_HELPER:-$ROOT/bin/native-scroll-helper}"'
+  FUSE_TARGET="$APP"
 else
   cp -a "$ELECTRON_DIST/." "$STAGE/electron/"
-  ELECTRON_EXE="electron/electron"
+  ELECTRON_EXE="electron/pixel"
   NATIVE_SCROLL=""
+  FUSE_TARGET="$STAGE/electron/pixel"
 fi
+
+TOOLS="$OUT/tools"
+mkdir -p "$TOOLS"
+[ -f "$TOOLS/package.json" ] || echo '{"private":true}' > "$TOOLS/package.json"
+(cd "$TOOLS" && npm install --no-audit --no-fund --silent @electron/fuses@2.1.3)
+FUSES="$TOOLS/node_modules/.bin/electron-fuses"
+[ -x "$FUSES" ] || { echo "release.sh: @electron/fuses did not install" >&2; exit 1; }
+NO_COLOR=1 "$FUSES" write --app "$FUSE_TARGET" EnableCookieEncryption=on
+NO_COLOR=1 "$FUSES" read --app "$FUSE_TARGET" | sed $'s/\x1b\[[0-9;]*m//g' | tee "$OUT/fuses.txt"
+grep -q "EnableCookieEncryption is Enabled" "$OUT/fuses.txt"
+grep -q "RunAsNode is Enabled" "$OUT/fuses.txt"
 
 cat > "$STAGE/bin/terminal-browser" <<EOF
 #!/bin/sh

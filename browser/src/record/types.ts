@@ -1,4 +1,4 @@
-import type { DragEvent, MouseMoveEvent, Surface, WheelEvent } from "pixel-react";
+import type { DragEvent, MouseMoveEvent, Surface, WheelEvent } from "@zenbu-labs/pixel";
 import type { CropScope, MarkupObject, Rect, Tool, Vec } from "./model";
 
 export type InteractionKind = "click" | "link" | "reload" | "load";
@@ -60,6 +60,7 @@ export interface RecordView {
   durationMs: number;
   currentKey: number | null;
   pageUrl: string;
+  recordKey: string;
   shots: RecordShot[];
   shotThumb: Surface | null;
   keyframeCount: number;

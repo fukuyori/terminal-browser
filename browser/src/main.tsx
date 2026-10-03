@@ -5,12 +5,17 @@ import path from "node:path";
 import { app, screen } from "electron";
 
 import { runDaemon } from "./daemon";
-import { LOGS_DIR, ensureDataDir } from "pixel-store";
-import { appLog } from "pixel-react";
+import { ConfigStore, LOGS_DIR, SETTINGS_FILE, SHORTCUTS_FILE, ensureDataDir, installedVersion, logLifecycle, observeProcessExit } from "shared";
+import { Telemetry } from "./telemetry";
+import type { CrashSource } from "./telemetry";
+import { appLog } from "@zenbu-labs/pixel";
 import { claimProfile } from "./profile";
+import { registerScheme } from "./pages/scheme";
+observeProcessExit("daemon");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+app.commandLine.appendSwitch("enable-features", "WebMCP");
 
 if (process.env.TERMINAL_BROWSER_DISABLE_GPU === "1") {
   app.commandLine.appendSwitch("disable-gpu");
@@ -19,10 +24,35 @@ try {
   ensureDataDir();
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 } catch {}
-app.commandLine.appendSwitch("enable-logging", "file");
-app.commandLine.appendSwitch("log-file", path.join(LOGS_DIR, "chromium.log"));
+if (process.platform !== "win32") {
+  app.commandLine.appendSwitch("enable-logging", "file");
+  app.commandLine.appendSwitch("log-file", path.join(LOGS_DIR, "chromium.log"));
+}
 app.setName("terminal-browser");
 claimProfile();
+registerScheme();
+
+const CRASH_REPORT_EXIT_DEADLINE_MS = 2000;
+const crashReports = new Telemetry({
+  version: installedVersion() ?? "dev",
+  usageEnabled: () => false,
+  crashReportsEnabled: () => false,
+  terminal: () => null,
+});
+function reportAndExit(error: unknown, source: CrashSource) {
+  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+  const exit = () => app.exit(1);
+  const deadline = setTimeout(exit, CRASH_REPORT_EXIT_DEADLINE_MS);
+  void crashReports.crashed(error, source).finally(() => {
+    clearTimeout(deadline);
+    exit();
+  });
+}
+process.on("uncaughtException", (error) => reportAndExit(error, "uncaughtException"));
+process.on("unhandledRejection", (reason) => {
+  process.stderr.write(`${reason instanceof Error ? reason.stack : String(reason)}\n`);
+  void crashReports.crashed(reason, "unhandledRejection");
+});
 
 
 function freePort(): Promise<number> {
@@ -54,6 +84,6 @@ void (async () => {
   );
   await runDaemon(cdpPort);
 })().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
-  app.exit(1);
+  logLifecycle("daemon", "startup failed");
+  reportAndExit(error, "startup");
 });

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Image, Text } from "pixel-react";
+import { Box, Image, Text } from "@zenbu-labs/pixel";
 import { displayUrl } from "../url";
 import { Icon } from "./icons";
 import { usePulse } from "./pulse";
@@ -149,15 +149,13 @@ export function TabStrip({
   const pointerIn = useRef(false);
   const dotPulse = usePulse(tabs.some((tab) => tab.agentControlled && !tab.active));
   const label = (tab: TabRow) =>
-    tab.active && !tab.app
-      ? activeLabel || tab.title || "new tab"
-      : tab.title || (tab.app ? "app" : "new tab");
+    tab.active ? activeLabel || tab.title || "New tab" : tab.title || "New tab";
   const charW = rem * 0.82 * 0.6;
   const slotW = rem * 0.85;
   const padX = rem * 0.7;
   const innerGap = rem * 0.35;
   const gap = rem * 0.3;
-  const avail = Math.max(0, width - rem * 3.1) - gap * tabs.length;
+  const avail = Math.max(0, width - rem * 1.75) - gap * tabs.length;
   const minInactive = padX * 2 + slotW;
   const capInactive = rem * 10;
   const minActive = Math.min(rem * 10, avail);
@@ -181,7 +179,15 @@ export function TabStrip({
       sum += squeezed;
     }
   }
-  const activeWidth = Math.max(rem * 4, Math.min(rem * 26, avail - sum));
+  // A lone tab has no resting background, so a box wider than its label would
+  // appear from nowhere on hover; it fits its content instead of taking the cap.
+  const active = tabs.find((tab) => tab.active);
+  const intrinsicActive =
+    padX * 2 + slotW + innerGap + (active ? label(active).length + 1 : 0) * charW;
+  const activeWidth =
+    tabs.length === 1
+      ? Math.max(rem * 4, Math.min(intrinsicActive, avail))
+      : Math.max(rem * 4, Math.min(rem * 26, avail - sum));
   const { entries, unfreeze } = useCompactTabs(
     tabs,
     (tab) => (tab.active ? activeWidth : inactiveWidths.get(tab.id) ?? minInactive),
@@ -235,13 +241,11 @@ export function TabStrip({
               cornerRadius: rem * 0.45,
               background:
                 tabs.length > 1 && tab.active && !ghost ? theme.hover : undefined,
-              hoverBackground: tab.active || ghost ? undefined : theme.hover,
+              hoverBackground: ghost || (tab.active && tabs.length > 1) ? undefined : theme.hover,
               flexShrink: tab.active && !ghost ? 1 : 0,
               overflow: "hidden",
             }}
-            onClick={() =>
-              tab.active && !tab.app ? actions.urlEdit() : actions.tabSwitch(tab.id)
-            }
+            onClick={() => (tab.active ? actions.urlEdit() : actions.tabSwitch(tab.id))}
             onMouseEnter={() => setHovered(tab.id)}
             onMouseLeave={() => setHovered((id) => (id === tab.id ? null : id))}
           >
@@ -305,6 +309,7 @@ export function TabStrip({
                       ? theme.fg
                       : theme.muted,
                 wrap: false,
+                ellipsis: true,
                 selectable: false,
                 flexShrink: 1,
                 overflow: "hidden",
@@ -317,31 +322,17 @@ export function TabStrip({
       </Box>
       <Box
         style={{
-          width: rem * 1.3,
-          height: rem * 1.3,
+          width: rem * 1.5,
+          height: rem * 1.5,
           alignItems: "center",
           justifyContent: "center",
-          cornerRadius: rem * 0.65,
+          cornerRadius: rem * 0.3,
           hoverBackground: theme.hover,
           flexShrink: 0,
         }}
         onClick={actions.tabNew}
       >
         <Icon icon="plus" size={rem * 1} color={theme.muted} />
-      </Box>
-      <Box
-        style={{
-          width: rem * 1.3,
-          height: rem * 1.3,
-          alignItems: "center",
-          justifyContent: "center",
-          cornerRadius: rem * 0.65,
-          hoverBackground: theme.hover,
-          flexShrink: 0,
-        }}
-        onClick={actions.tabMenu}
-      >
-        <Icon icon="more" size={rem * 1} color={theme.muted} />
       </Box>
     </Box>
   );

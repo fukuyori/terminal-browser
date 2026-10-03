@@ -15,7 +15,7 @@ APP="$STAGE/electron/terminal-browser.app"
 LOOSE_BINARIES=(
   "$STAGE/bin/native-scroll-helper"
   "$STAGE/agent-browser/bin/agent-browser"
-  "$STAGE/browser/native/pixel.node"
+  "$STAGE"/browser/node_modules/@zenbu-labs/pixel-native-*/pixel.node
 )
 
 if [ -z "${MACOS_SIGN_P12:-}" ]; then

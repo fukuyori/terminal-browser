@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const ref = "v0.33.0";
+const ref = "v0.38.1";
 
 if (process.argv.includes("--ref")) {
   process.stdout.write(`${ref}\n`);

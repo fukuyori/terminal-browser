@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { codingAgent, shellLiteral } from "pixel-terminals";
-import type { Pane, PaneDetails, Terminal } from "pixel-terminals";
+import { shellLiteral } from "@zenbu-labs/pixel/terminal";
+import { codingAgent } from "./agents";
+import type { Pane, PaneDetails, Terminal } from "@zenbu-labs/pixel/terminal";
 
 const exec = promisify(execFile);
 
-export type TargetTier = "parent" | "agent" | "neighbor";
+export type TargetTier = "embed" | "parent" | "agent" | "neighbor";
 
 export interface AgentTarget {
   pane: string;
@@ -25,7 +26,14 @@ export interface AgentPaneContext {
   parentTty: string | null;
   cwd: string;
   self(): Promise<Pane | null>;
+  embedded?: EmbeddedAgent | null;
 }
+
+export interface EmbeddedAgent {
+  send(content: string): Promise<boolean>;
+}
+
+const EMBED_TARGET: AgentTarget = { pane: "embed", tier: "embed", agent: true };
 
 async function withCommands(panes: PaneDetails[]): Promise<PaneDetails[]> {
   if (!panes.some((pane) => pane.tty && pane.command == null)) return panes;
@@ -63,6 +71,10 @@ export class AgentPaneFinder {
   }
 
   async send(content: string): Promise<AgentTarget | null> {
+    if (this.ctx.embedded) {
+      const taken = await this.ctx.embedded.send(content).catch(() => false);
+      if (taken) return EMBED_TARGET;
+    }
     const terminal = this.ctx.terminal;
     if (!terminal?.sendText) return null;
     let target = await this.target();
@@ -113,7 +125,12 @@ export class AgentPaneFinder {
     const windows = process.platform === "win32" || this.ctx.parentTty?.startsWith("CONIN$#");
     let panes: PaneDetails[] = [];
     try {
-      panes = await withCommands((await terminal.listPanes?.()) ?? []);
+      panes = await withCommands(
+        (await terminal.listPanes?.({
+          commands: (command) => codingAgent(command) != null,
+          tty: this.ctx.parentTty,
+        })) ?? [],
+      );
     } catch {}
     const self = await this.ctx.self();
     const inTab = (pane: Pane) => self == null || pane.tab === self.tab;

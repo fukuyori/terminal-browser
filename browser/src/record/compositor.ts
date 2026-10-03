@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { encodeRecording } from "pixel-react";
+import { encodeRecording } from "@zenbu-labs/pixel";
 import { clampRect, moveObject } from "./model";
 import { buildSampleTimes } from "./samples";
 import { lastIndexAtOrBefore } from "./recorder";
@@ -84,7 +84,7 @@ export function writeFailedManifest(dir: string, page: { url: string; title: str
 export async function compositeRecording(options: CompositeOptions): Promise<void> {
   const { recorder, markup, page, trim } = options;
   const frames = recorder.frames;
-  if (frames.length === 0) throw new Error("nothing captured");
+  if (frames.length === 0) throw new Error("Nothing captured");
   const dir = recorder.dir;
 
   const trimStart = trim?.startMs ?? 0;

@@ -11,8 +11,9 @@
     "test": "tsc -p tsconfig.json && node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "pixel-store": "workspace:*",
-    "pixel-terminals": "workspace:*"
+    "@zenbu-labs/pixel": "workspace:*",
+    "shared": "workspace:*",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

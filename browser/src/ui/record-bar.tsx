@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Box, Text } from "pixel-react";
-import type { Rgba } from "pixel-react";
+import { Box, Text } from "@zenbu-labs/pixel";
+import type { Rgba } from "@zenbu-labs/pixel";
 import { measureText } from "../record/model";
 import type { InteractionKind, RecordView } from "../record/types";
-import { recordKeyLabel } from "../session/keybindings";
 import { displayUrl } from "../url";
 import { Icon } from "./icons";
 import type { IconName } from "./icons";
@@ -33,10 +32,10 @@ function interactionColor(kind: InteractionKind, theme: Theme): Rgba {
 }
 
 const INTERACTION_LABELS: Record<InteractionKind, string> = {
-  click: "click",
-  link: "link opened",
-  reload: "reload",
-  load: "page load",
+  click: "Click",
+  link: "Link opened",
+  reload: "Reload",
+  load: "Page load",
 };
 
 /** hover tooltip above a track marker, centered on the marker's box */
@@ -66,7 +65,7 @@ function TrackTip({
         alignItems: "center",
         justifyContent: "center",
         cornerRadius: rem * 0.3,
-        background: withAlpha(mix(theme.bg, theme.fg, 0.04), 235),
+        background: theme.field,
         border: { width: 1, color: border },
       }}
     >
@@ -193,7 +192,7 @@ export function recordBarCluster(durationMs: number): ClusterContents {
   return { minutes: durationMs >= 60000 };
 }
 
-const PLAY_CLUSTER_REM = 4.7;
+const PLAY_CLUSTER_REM = 5.4;
 
 export function recordBarMetrics(layout: ChromeLayout, cluster: ClusterContents): RecordBarMetrics {
   const rem = layout.rem;
@@ -243,7 +242,6 @@ export function RecordBar({
         inset: { top: metrics.y, left: 0 },
         width: layout.width,
         height: metrics.height,
-        background: theme.bg,
       }}
     >
       <Box
@@ -443,7 +441,7 @@ function ShotThumb({
           <Text
             style={{
               fontSize: rem * 0.55,
-              color: theme.bg,
+              color: theme.overlay,
               wrap: false,
               selectable: false,
             }}
@@ -546,7 +544,7 @@ function Track({
           height: strip.height,
           cornerRadius: 6,
           overflow: "hidden",
-          background: mix(theme.bg, [0, 0, 0, 255], 0.35),
+          background: withAlpha([0, 0, 0, 255], 89),
           border: { width: 1, color: theme.fieldBorder },
         }}
       >
@@ -682,7 +680,7 @@ function Track({
             <TrackIcon
               icon="pen"
               color={theme.yellow}
-              label="has edits"
+              label="Has edits"
               x={center}
               trackY={trackY}
               rem={rem}
@@ -736,7 +734,7 @@ function Track({
                 : mix(theme.fg, theme.bg, 0.08),
             border: {
               width: 1,
-              color: view.onShot ? theme.accent : withAlpha(theme.bg, 200),
+              color: view.onShot ? theme.accent : withAlpha(theme.overlay, 200),
             },
           }}
         />
@@ -758,7 +756,7 @@ function Track({
               alignItems: "center",
               padding: { left: rem * 0.35, right: rem * 0.35 },
               cornerRadius: rem * 0.3,
-              background: withAlpha(mix(theme.bg, theme.fg, 0.04), 235),
+              background: theme.field,
               border: { width: 1, color: theme.fieldBorder },
             }}
           >
@@ -809,7 +807,7 @@ export function ReviewToolbar({
       >
         <Icon icon="close" size={rem * 0.95} color={theme.muted} />
         <Text style={{ fontSize: rem * 0.68, color: theme.disabled, wrap: false, selectable: false }}>
-          {recordKeyLabel}
+          {view.recordKey}
         </Text>
       </Box>
       <Box
@@ -839,7 +837,7 @@ export function ReviewToolbar({
       <ShotThumb view={view} rem={rem} theme={theme} />
       {view.keyframeCount > 0 && (
         <Text style={{ fontSize: rem * 0.68, color: theme.disabled, wrap: false, selectable: false }}>
-          {view.keyframeCount > 1 ? "tab to cycle" : "tab to view"}
+          {view.keyframeCount > 1 ? "Tab to cycle" : "Tab to view"}
         </Text>
       )}
       <RecordToolbarPill view={view} actions={actions} rem={rem} theme={theme} />
@@ -896,7 +894,7 @@ export function RecordToolbarPill({
           selectable: false,
         }}
       >
-        {stopped ? "complete" : "stop"}
+        {stopped ? "Complete" : "Stop"}
       </Text>
       <Text
         style={{
@@ -906,7 +904,7 @@ export function RecordToolbarPill({
           selectable: false,
         }}
       >
-        {stopped ? "ctrl+enter" : recordKeyLabel}
+        {stopped ? "ctrl+enter" : view.recordKey}
       </Text>
     </Box>
   );

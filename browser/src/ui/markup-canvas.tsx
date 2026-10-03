@@ -1,5 +1,5 @@
-import { Box, Input, Path, Text } from "pixel-react";
-import type { Rgba, Surface } from "pixel-react";
+import { Box, Input, Path, Text } from "@zenbu-labs/pixel";
+import type { Rgba, Surface } from "@zenbu-labs/pixel";
 import {
   CROP_SCOPES,
   MARKUP_COLORS,
@@ -16,7 +16,7 @@ import type { MarkupCanvasView } from "../record/types";
 import { ICONS, Icon } from "./icons";
 import type { IconName } from "./icons";
 import { PopupMenu, ShadeAround } from "./record-widgets";
-import { mix, withAlpha } from "./theme";
+import { withAlpha } from "./theme";
 import type { Theme } from "./theme";
 import type { ChromeActions, ChromeLayout } from "./types";
 
@@ -83,7 +83,6 @@ export function MarkupCanvas({
         width: view.rect.width,
         height: view.rect.height,
         overflow: "hidden",
-        background: theme.bg,
       }}
       onDrag={actions.record.canvasDrag}
       onWheel={actions.record.canvasWheel}
@@ -261,7 +260,7 @@ function LinkToast({ view, toView }: { view: MarkupCanvasView; toView: (p: Vec) 
           selectable: false,
         }}
       >
-        link opened
+        Link opened
       </Text>
       <Text
         style={{
@@ -650,7 +649,7 @@ function Toolbar({
         alignItems: "center",
         gap: rem * 0.12,
         padding: { left: rem * 0.3, right: rem * 0.15 },
-        background: mix(theme.bg, [0, 0, 0, 255], 0.25),
+        background: theme.overlay,
         cornerRadius: rem * 0.45,
         border: { width: 1, color: theme.fieldBorder },
       }}
@@ -760,7 +759,7 @@ function Toolbar({
           >
             <Icon icon="camera" size={rem * 0.95} color={theme.muted} />
             <Text style={{ fontSize: rem * 0.72, color: theme.fg, wrap: false, selectable: false }}>
-              screenshot
+              Screenshot
             </Text>
             <Text style={{ fontSize: rem * 0.65, color: theme.muted, wrap: false, selectable: false }}>
               enter

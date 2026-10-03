@@ -1,5 +1,5 @@
-import { Box, Text } from "pixel-react";
-import type { Rgba } from "pixel-react";
+import { Box, Text } from "@zenbu-labs/pixel";
+import type { Rgba } from "@zenbu-labs/pixel";
 import type { Rect } from "../record/model";
 import { Icon } from "./icons";
 import { mix, withAlpha } from "./theme";
@@ -64,7 +64,7 @@ export function PopupMenu({
         flexDirection: "column",
         padding: rem * 0.2,
         gap: 2,
-        background: mix(theme.bg, [0, 0, 0, 255], 0.25),
+        background: withAlpha([0, 0, 0, 255], 64),
         cornerRadius: rem * 0.35,
         border: { width: 1, color: theme.fieldBorder },
       }}
@@ -79,7 +79,7 @@ export function PopupMenu({
             padding: { left: rem * 0.5, right: rem * 0.5 },
             cornerRadius: rem * 0.25,
             background: item.danger
-              ? mix(theme.bg, theme.red, 0.3)
+              ? withAlpha(theme.red, 77)
               : index === focused
                 ? theme.hover
                 : undefined,

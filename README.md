@@ -10,24 +10,30 @@ A real browser that runs inside your Windows terminal.
 
 This repository is a Windows-specific fork of
 [zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser). The current
-release is based on upstream v0.8.0. This README covers the Windows fork only; documentation for
+development branch is based on upstream v0.13.4. This README covers the Windows fork only; documentation for
 other platforms remains in the original project.
 
-| Area | Upstream v0.8.0 | This Windows fork |
+| Area | Upstream v0.13.4 | This Windows fork |
 | --- | --- | --- |
 | Runtime | Original terminal and process integrations | Windows x64 port using Win32 Console, ConPTY, named pipes, and Windows paths |
 | Graphics | Kitty graphics rendering | WezTerm file-frame transport and a Windows-specific iTerm2 PNG fallback |
-| Distribution | Original release process | Inno Setup installer, versioned portable ZIP, Authenticode signing, and automated Windows release jobs |
+| Distribution | Original release process | Maintainer-signed Inno Setup installer and versioned portable ZIP, with separate Windows CI verification |
 | SSH and setup | Original SSH and skill workflows | Windows OpenSSH and `tar.exe` handling, plus Windows-compatible skill setup |
-| Version | `v0.8.0` | `0.8.0-win.1`, identifying the upstream base and Windows revision |
+| Version | `v0.13.4` | `0.13.4-win.1`, identifying the upstream base and Windows revision |
 
 Features incorporated from upstream and changes unique to each Windows release are listed in the
 [changelog](CHANGELOG.md).
 
+The current version is `0.13.4-win.1`, dated 2026-10-03. Releases are on the
+[releases page](https://github.com/fukuyori/terminal-browser/releases), each a
+locally built, signed and verified ZIP and installer. CI builds are unsigned
+and are for verification only. See the
+[CI results](docs/ci-verification.md) and [device checks](docs/windows-device-checks.md).
+
 ## Windows support (experimental)
 
-This fork provides a native Windows x64 build. It has been tested with PowerShell 7 and
-WezTerm nightly.
+This fork provides a native Windows x64 build. Device checks cover Ghostty on
+Windows and the standalone browser in WezTerm, using PowerShell.
 
 Windows support includes:
 
@@ -44,7 +50,10 @@ Windows support includes:
 
 ### Requirements
 
-Install WezTerm nightly. For the fastest rendering path, enable the kitty keyboard and graphics
+Use Ghostty on Windows or WezTerm nightly for the standalone browser. The Claude
+Code plugin's embedded Image path was validated on Ghostty with Claude Code 2.1.278;
+WezTerm support for that path is [deferred](https://github.com/fukuyori/terminal-browser/issues/2).
+For the WezTerm file-frame path, enable the kitty keyboard and graphics
 protocols in `wezterm.lua`, then restart WezTerm:
 
 ```lua
@@ -90,9 +99,16 @@ If the command is not found, open another terminal or call the launcher directly
 
 ### Exit on Windows
 
-Press `Ctrl+Q` in the terminal-browser pane. If `Ctrl+Q` is assigned to WezTerm as a leader
-key, use `Ctrl+Shift+Q`. You can also press `Ctrl+C` in the PowerShell session that launched
-terminal-browser.
+Press `Ctrl+Q` in the terminal-browser pane. If the terminal takes `Ctrl+Q` itself, as Ghostty
+does, or it is the WezTerm leader key, use `Ctrl+Shift+Q`. You can also press `Ctrl+C` in the
+PowerShell session that launched terminal-browser.
+
+To quit the browsers in every pane at once, run this from any shell. Each browser quits the way
+its quit key does, so every terminal is put back:
+
+```powershell
+terminal-browser shutdown --all
+```
 
 ### Uninstall on Windows
 
@@ -100,10 +116,44 @@ Open **Settings > Apps > Installed apps**, select **terminal-browser**, and choo
 **Uninstall**. The Start menu uninstall shortcut performs the same operation. Uninstalling also
 removes the user `PATH` entry added by the installer.
 
+The installer and the uninstaller stop running copies first. They run
+`terminal-browser shutdown --all`, then end whatever still runs from the install directory, such
+as the agent-browser daemon. Installing over a release older than `0.13.4-win.1` cannot ask its
+browsers to quit, so close them before upgrading from one.
+
+### Settings on Windows
+
+Press `Ctrl+,` for the settings screen. Settings and shortcuts are kept in `settings.json` and
+`shortcuts.json` under `%USERPROFILE%\.config\terminal-browser`; `XDG_CONFIG_HOME` or
+`TERMINAL_BROWSER_CONFIG_DIR` moves them. `terminal-browser config list` prints every key, and
+`config get`, `config set`, `config unset` and `config path` read and change them from a shell.
+
+### Telemetry and update checks
+
+This fork sends no telemetry. Upstream's usage events and crash reports are disabled in the
+build and their settings are not offered. On Windows the browser also does not ask upstream's
+release feed for updates, because that feed lists only macOS and Linux builds; new Windows
+releases appear on the [releases page](https://github.com/fukuyori/terminal-browser/releases).
+
+### Claude code plugin
+
+[Install instructions here](/claude-code-plugin/README.md)
+
+On Windows, start the plugin from a terminal console. The bridge keeps that console
+attached after its launcher exits; if it cannot attach, startup returns an error.
+The CLI and Pixel native binary must come from matching builds. Production
+Ghostty checks passed for drawing, IME input, Japanese/multiline copying,
+resize/input, hide/reopen and session-exit cleanup. An earlier
+[unexpected browser exit](https://github.com/fukuyori/terminal-browser/issues/1)
+remains unexplained; those passes do not establish sustained reliability.
+
 ### Build Windows from source
 
+Pixel, the rendering engine, lives in this repository under `pixel/`. The build
+script installs the workspace, then builds Pixel and its native addon from scratch.
+Run from the repository root:
+
 ```powershell
-corepack pnpm install --frozen-lockfile
 .\scripts\build-windows.ps1
 .\scripts\package-windows-inno.ps1
 ```
@@ -115,7 +165,7 @@ The build writes the unpacked payload to `dist-release\terminal-browser`. Add `-
 .\scripts\build-windows.ps1 -Zip
 ```
 
-The ZIP is optional, is about 190 MB, and is not required to create the installer. The pinned
+The ZIP is optional, is about 209 MB in the verified CI build, and is not required to create the installer. The pinned
 `agent-browser` dependency is built and included automatically. Use
 `-AgentBrowserPath C:\path\to\agent-browser.exe` only to override that binary.
 
@@ -123,16 +173,29 @@ The ZIP is optional, is about 190 MB, and is not required to create the installe
 `dist-release\terminal-browser-<version>-windows-x64.exe`. The installer supports English and
 Japanese, installs per user, can update the user `PATH`, and can create a WezTerm shortcut.
 
+These commands produce unsigned development artifacts. For distribution, the
+maintainer adds `-Sign` to both scripts; see the
+[version and release checklist](docs/version-update-checklist.md). On 2026-09-21,
+the maintainer rebuilt signed packages with lifecycle logging and the installer
+filename fix. Installation, Ghostty launch/display/exit, and uninstall checks
+passed; see the [signed package retest](docs/windows-device-checks.md#signed-package-retest-on-2026-09-21)
+for exact artifacts and checks not repeated on this build.
+
 ### Windows versioning
 
 Windows fork versions combine the upstream version and a fork revision. For example,
-`0.8.0-win.1` is the first Windows release based on upstream v0.8.0.
+`0.13.4-win.1` is the first Windows release based on upstream v0.13.4.
 
 Set the default with `Version` in `scripts\build-windows.ps1`, or pass `-Version` for a one-off
 build. The value is written to `VERSION` and displayed by `terminal-browser --version`.
 
-Inno Setup requires a numeric four-part version, so `0.8.0-win.1` becomes `0.8.0.1` in the
+Inno Setup requires a numeric four-part version, so `0.13.4-win.1` becomes `0.13.4.1` in the
 installer. Versions outside this format use `0.0.0.0` for the installer version.
+The ZIP and EXE filenames both keep the payload version, for example
+`terminal-browser-0.13.4-win.1-windows-x64.zip` and
+`terminal-browser-0.13.4-win.1-windows-x64.exe`. The installer manifest records
+that version in `version` and the numeric Windows version in `installerVersion`.
+The packaging script's `-Version` overrides only the numeric Windows version.
 
 `terminal-browser upgrade` does not update the Windows fork. On Windows it stops and directs
 users to this fork's releases page.
@@ -222,9 +285,10 @@ pasting.
 
 | Action | Shortcut |
 | --- | --- |
-| Quit | `Ctrl+Q` or `Ctrl+Shift+Q` when `Ctrl+Q` is the WezTerm leader key |
+| Quit | `Ctrl+Q`, or `Ctrl+Shift+Q` when the terminal takes `Ctrl+Q` |
 | New tab | `Ctrl+T` |
-| Command palette | `Ctrl+K` or `Alt+K` |
+| Command palette | `Ctrl+K`, or `Alt+K` when the terminal takes `Ctrl+K` |
+| Settings | `Ctrl+,` |
 | Find in page | `Ctrl+Shift+F` |
 | Next / previous match | `Enter` / `Shift+Enter` |
 | Back / forward | `Ctrl+[` / `Ctrl+]` |
@@ -234,6 +298,9 @@ pasting.
 | Complete recording review | `Ctrl+Enter` |
 | Select an element to send to an agent | `Ctrl+G` |
 | Close popup or overlay | `Escape` |
+
+These are the defaults. Shortcuts match their modifiers exactly and can be changed on the
+settings screen or in `shortcuts.json`.
 
 ## How it works
 
@@ -263,50 +330,7 @@ Running terminal-browser directly inside an SSH session also works, but every fr
 input must cross the network. The terminal also cannot use the kitty graphics protocol's
 [local-client optimizations](https://sw.kovidgoyal.net/kitty/graphics-protocol/#local-client).
 
-On Windows, OpenSSH Client and `tar.exe` must be available on `PATH`. SSH host aliases work.
-`--ssh-bundle` targets a Unix remote and may open multiple SSH connections on Windows, so key
-authentication or `ssh-agent` is recommended.
-
-## App mode
-
-terminal-browser can build terminal applications using browser technology. See
-[terminal-code](https://github.com/zenbu-labs/terminal-code) for a production example.
-
-Use `--app-mode` when opening terminal-browser. The optional `--preload` and `--main-script`
-arguments use Electron's [preload scripts](https://www.electronjs.org/docs/latest/tutorial/tutorial-preload)
-and main process.
-
-The complete app-related options for `terminal-browser open` are:
-
-```text
-  --preload=<path>      Run a script inside the context of a web page before it loads (uses electron's preload feature under the hood, runs in an isolated world).
-                        terminal-browser specific api's are exposed on globalThis.terminalBrowser
-                        {
-                          theme: () => { background: [r,g,b], foreground: [r,g,b], ansi: ([r,g,b] | null)[] } | null, // null until the terminal reports its colors
-                          onTheme: (cb: (theme: Theme) => void) => () => void, // returns unsubscribe
-                          quit: () => void // closes this browser window
-                        }
-                        --terminal-browser-session=<key> is passed as extra arguments to the renderer process, available via process.argv
-  --main-script=<path>  Run a node.js script in the same process as the browser (this is an electron main process)
-  --open-tabs-in-popup-stack Links that would open a new tab open a popup over the
-                        page instead.
-  --allow-clipboard-read
-                        Lets websites read from clipboard.
-  --no-toolbar          No toolbar or tab strip
-  --no-shortcuts        No browser shortcuts, keys go to the page
-  --no-context-menu     No right-click menu
-  --no-overlays         No toasts or HUDs drawn over the page
-  --no-frame            No border or padding, the page fills the pane
-  --app-mode            Shorthand for --no-toolbar --no-shortcuts
-                        --no-context-menu --no-overlays --no-frame
-                        --allow-clipboard-read --open-tabs-in-popup-stack
-  --ssh-bundle <dir>    Install and execute a bundle on a remote Unix server. This is useful with
-                        --app-mode and --ssh, allowing you to run an application server on a
-                        remote machine, then view the output over ssh
-  --ssh-bundle-dir <dir>
-                        Remote installation base for --ssh-bundle. Defaults to
-                        ${XDG_DATA_HOME:-~/.local/share}/terminal-browser/bundles
-```
+On Windows, OpenSSH Client must be available on `PATH`. SSH host aliases work.
 
 ## Contributing
 
@@ -320,7 +344,7 @@ For local development setup, the recommended approach is to ask a coding agent.
 
 Some terminal-browser CLI subcommands rely on terminal or multiplexer scripting features. To
 add support for another terminal, refer to the
-[existing implementations](https://github.com/zenbu-labs/terminal-browser/tree/main/terminals/src/terminals).
+[Pixel terminal implementations](pixel/packages/pixel/src/terminal/terminals).
 
 ## Community
 

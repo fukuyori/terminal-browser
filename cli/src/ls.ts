@@ -1,5 +1,5 @@
-import { callerTty } from "pixel-terminals";
-import type { Terminal } from "pixel-terminals";
+import { callerTty } from "@zenbu-labs/pixel/terminal";
+import type { Terminal } from "@zenbu-labs/pixel/terminal";
 
 import { browsers, recordKey, targets } from "./instances";
 import type { Browser, TabTarget } from "./instances";

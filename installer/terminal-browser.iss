@@ -4,7 +4,7 @@
 #endif
 #define MyAppPublisher "Zenbu Labs, Inc."
 #define MyAppURL "https://github.com/zenbu-labs/terminal-browser"
-#define MyAppExeName "electron\electron.exe"
+#define MyAppExeName "electron\pixel.exe"
 
 [Setup]
 AppId={{A246C19C-B579-4EFA-9101-1AB8E4314527}
@@ -155,6 +155,35 @@ begin
     RegWriteExpandStringValue(HKCU, UserEnvironmentKey, 'Path', PaddedPath);
 end;
 
+// A running copy keeps its files open, so they could be neither replaced nor
+// removed. Browsers are asked to quit first, which puts their terminals back;
+// whatever still runs from the install directory afterwards is ended.
+procedure StopRunningCopies;
+var
+  Launcher, Leftovers: String;
+  ResultCode: Integer;
+begin
+  // Through the launcher, which names the install directory: without that the
+  // CLI looks in another copy's registry and finds no browser to ask.
+  Launcher := ExpandConstant('{app}\bin\terminal-browser.cmd');
+  if FileExists(Launcher) then
+    Exec(ExpandConstant('{cmd}'), '/d /c ""' + Launcher + '" shutdown --all"', '',
+      SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  Leftovers := '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | ' +
+    'Where-Object { $_.ExecutablePath -like ''' + ExpandConstant('{app}') + '\*'' -and ' +
+    '$_.Name -notlike ''unins*.exe'' } | ' +
+    'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"';
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Leftovers, '',
+    SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  StopRunningCopies;
+  Result := '';
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('addtopath') then
@@ -164,5 +193,8 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
+  begin
+    StopRunningCopies;
     RemoveFromUserPath(ExpandConstant('{app}\bin'));
+  end;
 end;

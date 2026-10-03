@@ -1,4 +1,4 @@
-import { Box, Image, Path, Text } from "pixel-react";
+import { Box, Image, Path, Text } from "@zenbu-labs/pixel";
 import type { Theme } from "./theme";
 import type { ChromeActions, ChromeLayout, PageMenuIcon, PageMenuItem, PageMenuView } from "./types";
 
@@ -14,19 +14,20 @@ export function PageContextMenu({
   theme: Theme;
 }) {
   const rem = layout.rem;
-  const rowH = Math.round(rem * 1.55);
+  const rowH = Math.round(rem * 1.7);
+  const menuPad = Math.round(rem * 0.25);
   const charW = rem * 0.82 * 0.6;
   const shortcutW = rem * 0.72 * 0.6;
   const hasIcons = view.items.some((item) => item.icon);
   const width = Math.round(
     view.items.reduce((widest, item) => {
-      let row = rem * 1.4 + item.label.length * charW;
-      if (hasIcons) row += rem * 1.2;
-      if (item.shortcut) row += rem * 0.6 + item.shortcut.length * shortcutW;
+      let row = rem * 1.8 + menuPad * 2 + item.label.length * charW;
+      if (hasIcons) row += rem * 1.5;
+      if (item.shortcut) row += rem * 1 + item.shortcut.length * shortcutW;
       return Math.max(widest, row);
-    }, rem * 9),
+    }, rem * 10),
   );
-  const height = view.items.length * rowH;
+  const height = view.items.length * rowH + menuPad * 2;
   const x = Math.max(2, Math.min(view.x, layout.width - width - 4));
   const y = Math.max(2, Math.min(view.y, layout.height - height - 4));
   return (
@@ -46,24 +47,15 @@ export function PageContextMenu({
           inset: { top: y, left: x },
           width,
           flexDirection: "column",
-          background: theme.field,
+          padding: menuPad,
+          background: theme.overlay,
           cornerRadius: rem * 0.45,
           border: { width: 1, color: theme.fieldBorder },
           overflow: "hidden",
         }}
       >
-        {view.items.map((item, i) => (
-          <MenuRow
-            key={item.id}
-            item={item}
-            rowH={rowH}
-            rem={rem}
-            theme={theme}
-            actions={actions}
-            first={i === 0}
-            last={i === view.items.length - 1}
-            alignIcons={hasIcons}
-          />
+        {view.items.map((item) => (
+          <MenuRow key={item.id} item={item} rowH={rowH} rem={rem} theme={theme} actions={actions} alignIcons={hasIcons} />
         ))}
       </Box>
     </>
@@ -76,8 +68,6 @@ function MenuRow({
   rem,
   theme,
   actions,
-  first,
-  last,
   alignIcons,
 }: {
   item: PageMenuItem;
@@ -85,24 +75,17 @@ function MenuRow({
   rem: number;
   theme: Theme;
   actions: ChromeActions;
-  first: boolean;
-  last: boolean;
   alignIcons: boolean;
 }) {
-  const radius = Math.max(2, rem * 0.45 - 1);
   return (
     <Box
       style={{
         height: rowH,
         alignItems: "center",
-        padding: { left: rem * 0.7, right: rem * 0.7 },
+        gap: rem * 0.45,
+        padding: { left: rem * 0.4, right: rem * 0.6 },
         hoverBackground: item.enabled ? theme.hover : undefined,
-        cornerRadius: {
-          topLeft: first ? radius : 0,
-          topRight: first ? radius : 0,
-          bottomLeft: last ? radius : 0,
-          bottomRight: last ? radius : 0,
-        },
+        cornerRadius: rem * 0.3,
         flexShrink: 0,
       }}
       onClick={item.enabled ? () => actions.pageMenuAction(item.id) : undefined}
@@ -110,7 +93,7 @@ function MenuRow({
       {item.icon ? (
         <MenuIcon icon={item.icon} enabled={item.enabled} rem={rem} theme={theme} />
       ) : (
-        alignIcons && <Box style={{ width: rem * 1.2, flexShrink: 0 }} />
+        alignIcons && <Box style={{ width: rem * 1, flexShrink: 0 }} />
       )}
       <Text
         style={{
@@ -153,17 +136,12 @@ function MenuIcon({
 }) {
   switch (icon.kind) {
     case "image": {
-      const size = rem * 0.95;
+      const size = rem * 1;
       return (
         <Image
           src={icon.src}
           error={<Box style={{ width: size, height: size }} />}
-          style={{
-            width: size,
-            height: size,
-            flexShrink: 0,
-            margin: { left: -rem * 0.1, right: rem * 0.35 },
-          }}
+          style={{ width: size, height: size, flexShrink: 0 }}
         />
       );
     }
@@ -178,12 +156,7 @@ function MenuIcon({
             cap: "round",
             join: "round",
           }}
-          style={{
-            width: rem * 0.75,
-            height: rem * 0.75,
-            flexShrink: 0,
-            margin: { right: rem * 0.45 },
-          }}
+          style={{ width: rem * 1, height: rem * 1, flexShrink: 0 }}
         />
       );
   }
