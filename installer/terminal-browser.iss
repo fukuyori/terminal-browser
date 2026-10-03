@@ -160,13 +160,14 @@ end;
 // whatever still runs from the install directory afterwards is ended.
 procedure StopRunningCopies;
 var
-  Node, Cli, Leftovers: String;
+  Launcher, Leftovers: String;
   ResultCode: Integer;
 begin
-  Node := ExpandConstant('{app}\runtime\node.exe');
-  Cli := ExpandConstant('{app}\cli\dist\main.js');
-  if FileExists(Node) and FileExists(Cli) then
-    Exec(Node, '--disable-warning=ExperimentalWarning "' + Cli + '" shutdown --all', '',
+  // Through the launcher, which names the install directory: without that the
+  // CLI looks in another copy's registry and finds no browser to ask.
+  Launcher := ExpandConstant('{app}\bin\terminal-browser.cmd');
+  if FileExists(Launcher) then
+    Exec(ExpandConstant('{cmd}'), '/d /c ""' + Launcher + '" shutdown --all"', '',
       SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
   Leftovers := '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | ' +
