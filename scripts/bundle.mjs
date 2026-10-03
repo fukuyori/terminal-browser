@@ -16,7 +16,7 @@ await build({
   platform: "node",
   format: "cjs",
   external: ["electron", "*.node"],
-  alias: { "pixel-store": path.join(root, "store", "src", "index.ts") },
+  alias: { shared: path.join(root, "shared", "src", "index.ts") },
   define: { "process.env.NODE_ENV": '"production"' },
   sourcemap: true,
   logLevel: "warning",

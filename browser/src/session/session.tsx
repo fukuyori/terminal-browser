@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
+import net from "node:net";
 import path from "node:path";
 
-import { app } from "electron";
+import { app, clipboard, screen } from "electron";
 import { createRoot } from "@zenbu-labs/pixel";
 import type {
   DevtoolsDock,
@@ -14,14 +15,38 @@ import type {
 import { detect } from "@zenbu-labs/pixel/terminal";
 import type { Pane, Terminal } from "@zenbu-labs/pixel/terminal";
 
+import {
+  commandLabel,
+  ENGINE_LOG_FILE,
+  fetchLatestRelease,
+  installedChannel,
+  installedVersion,
+  lastUrl,
+  listApps,
+  listStep,
+  maxFps,
+  renderEnv,
+  setLastUrl,
+  settings as settingsTable,
+  SETTINGS_FILE,
+  SHORTCUTS_FILE,
+  socketTerminal,
+  store,
+  SUGGESTIONS_OFF,
+  TERMINAL_SOCKET_ENV,
+  upgradeCommand,
+} from "shared";
+import type {
+  CommandId,
+  InstanceRow,
+  RegisteredApp,
+} from "shared";
 import { bundledAsset } from "../assets";
 import { CopyOnSelect, Grab, reactGrabPreloadPath } from "../grab/grab";
 import { AgentPaneFinder } from "../grab/target";
 import type { EmbeddedAgent } from "../grab/target";
-import { zoomDirection } from "../zoom";
 import type { ZoomDirection } from "../zoom";
-import { lastUrl, listApps, logLifecycle, setLastUrl, settings, store } from "pixel-store";
-import type { InstanceRow, RegisteredApp } from "pixel-store";
+import { logLifecycle } from "shared";
 
 import type { RecordTarget } from "../record/recorder";
 import { RecordSession } from "../record/session";
@@ -39,28 +64,32 @@ import type {
   PageMenuView,
   TabActions,
   TabView,
+  ToastView,
+  ReleaseView,
 } from "../ui/types";
-import { displayUrl, normalizeUrl, searchOrUrl } from "../url";
+import { displayUrl, normalizeUrl, searchOrUrl, searchUrlFor } from "../url";
+import type { SearchUrl } from "../url";
 import { START_URL } from "../pages/scheme";
 import type { PageContext } from "../pages/scheme";
 import { makeTheme } from "../ui/theme";
 import { fuzzyScore } from "./fuzzy";
-import {
-  bindingLabel,
-  defaultKeys,
-  grabKeyLabel,
-  isGrabKey,
-  isRecordKey,
-  listStep,
-  matchesBinding,
-  parseKeyBindings,
-  recordKeyLabel,
-} from "./keybindings";
-import type { KeyBinding } from "./keybindings";
 import { clampDevtoolsFraction, computeLayout, dividerFraction, recordBarHeight } from "./layout";
+
+// Installed builds run from a dist root; anything else is a source checkout.
+const DEV_BUILD = !process.env.TERMINAL_BROWSER_DIST_ROOT;
 import type { DevtoolsPlacement, SurfaceLayout } from "./layout";
+import { SettingsManager } from "./settings";
+import { Telemetry } from "../telemetry";
 import { fetchSuggestions } from "./suggest";
 import { TabManager } from "./tabs";
+
+function displayHz(): number {
+  try {
+    return Math.max(0, screen.getPrimaryDisplay().displayFrequency);
+  } catch {
+    return 0;
+  }
+}
 import type { Tab } from "./tabs";
 
 export interface SessionContext {
@@ -157,15 +186,32 @@ class Session {
   private readonly sessionFlags: {
     clipboardRead: boolean;
   };
-  private paletteApps: RegisteredApp[] = [];
   private readonly partition: string | null;
   private readonly socksPort: number | null;
   private readonly browserPreload: string;
-  private paletteBinding: KeyBinding[] = [];
-  private findBinding: KeyBinding[] = [];
-  private devtoolsBinding: KeyBinding[] = [];
-  private consoleBinding: KeyBinding[] = [];
-  private noSuper = false;
+  private readonly settings = new SettingsManager(
+    {
+      requestRender: () => this.render(),
+      settingsChanged: () => this.applyRenderSettings(),
+      toast: (text, state) => this.showToast(text, state),
+      setClipboard: (text) => this.root?.setClipboard(text),
+      overlayOpened: () => this.enterOverlay([]),
+      overlayClosed: () => this.leaveOverlay(),
+      release: () => this.release,
+    },
+    { settings: SETTINGS_FILE, shortcuts: SHORTCUTS_FILE },
+  );
+  private readonly release: ReleaseView = {
+    version: installedVersion() ?? "dev",
+    latest: null,
+    upgrade: upgradeCommand(),
+  };
+  private readonly telemetry = new Telemetry({
+    version: this.release.version,
+    usageEnabled: () => false,
+    crashReportsEnabled: () => false,
+    terminal: () => this.terminal?.name ?? null,
+  });
   private readonly tabs: TabManager;
   private readonly fallbackState: WebViewState;
 
@@ -204,14 +250,14 @@ class Session {
   private zoomHudTimer: ReturnType<typeof setTimeout> | null = null;
   private download: DownloadView | null = null;
   private downloadTimer: ReturnType<typeof setTimeout> | null = null;
-  private toast: { text: string; detail?: string; failed: boolean; alert: boolean } | null =
-    null;
+  private toast: ToastView | null = null;
+  private profiling = false;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private records = new Map<number, RecordSession>();
   private grabs = new Map<number, Grab>();
   private copyWatchers = new Map<number, CopyOnSelect>();
   private readonly copyOnSelect: boolean;
-  private readonly grabIcon = bundledAsset(path.join("react-grab", "logo.png"));
+  private readonly inspectIcon = bundledAsset(path.join("chromium", "logo.png"));
   private readonly agentPanes: AgentPaneFinder;
   private shownRecord: RecordSession | null = null;
   private recordStarting = false;
@@ -221,7 +267,8 @@ class Session {
   constructor(ctx: SessionContext) {
     this.ctx = ctx;
     this.defaultUrl = ctx.env.TERMINAL_BROWSER_START_PAGE === "1" ? START_URL : "about:blank";
-    this.terminal = detect(ctx.env);
+    const socket = ctx.env[TERMINAL_SOCKET_ENV];
+    this.terminal = socket ? socketTerminal(socket) : detect(ctx.env);
     this.marker = `terminal-browser:${ctx.key}`;
     this.argv = ctx.argv;
     this.agentPanes = new AgentPaneFinder({
@@ -288,12 +335,14 @@ class Session {
 
   async start(): Promise<void> {
     if (process.platform === "darwin") app.dock?.hide();
+    this.checkForUpdate();
+    this.telemetry.launched();
     await this.loadDevtoolsSettings();
     if (!this.ctx.tty) process.stdout.write(`\x1b]2;${this.marker}\x07`);
     this.root = createRoot({
       name: "terminal-browser",
       tty: this.ctx.tty,
-      sessionEnv: this.ctx.env,
+      sessionEnv: { ...this.ctx.env, ...renderEnv((key) => this.settings.get(key)) },
       cwd: this.ctx.cwd,
       onKey: (event) => this.handleKey(event),
       onResize: () => {
@@ -302,6 +351,9 @@ class Session {
         this.render();
       },
       onColors: () => this.render(),
+      onFocus: (focused) => {
+        if (focused) this.telemetry.used();
+      },
       onVisible: (visible) => {
         if (this.sessionHidden === !visible) return;
         this.sessionHidden = !visible;
@@ -314,7 +366,9 @@ class Session {
       },
     });
     this.fontId = await this.root.registerFont(bundledFontPath());
-    this.applyKeyBindings(this.root.info.kittyKeyboard);
+    this.settings.setNoSuper(!this.root.info.kittyKeyboard);
+    this.applyRenderSettings();
+    this.settings.watch();
     this.recalculateLayout();
     this.root.setPointerShape("default");
     this.tabs.create(this.fallbackState.url);
@@ -332,7 +386,8 @@ class Session {
       splitDir: splitDirection(flagValue(this.argv, "--split-dir")),
       parentTty: flagValue(this.argv, "--parent-tty"),
       state: () => this.tabs.activeState ?? this.fallbackState,
-      openTab: (url, cwd) => this.tabs.create(url ? normalizeUrl(url, cwd) : this.defaultUrl).id,
+      openTab: (url, cwd) =>
+        this.tabs.create(url ? normalizeUrl(url, cwd, this.searchUrl()) : this.defaultUrl).id,
       activateTab: (id) => {
         if (!this.tabs.has(id) || this.activeRecord()?.reviewing) return false;
         this.tabs.activate(id);
@@ -369,22 +424,12 @@ class Session {
     return this.finding;
   }
 
-  private applyKeyBindings(kittyKeyboard: boolean) {
-    this.noSuper = !kittyKeyboard;
-    const binding = (flag: string, fallback: string) =>
-      parseKeyBindings(flagValue(this.argv, flag) ?? defaultBinding(fallback, this.noSuper));
-    this.paletteBinding = binding("--palette-key", defaultKeys.palette);
-    this.findBinding = binding("--find-key", defaultKeys.find);
-    this.devtoolsBinding = binding("--devtools-key", defaultKeys.devtools);
-    this.consoleBinding = binding("--console-key", defaultKeys.console);
+  private get keymap() {
+    return this.settings.keymap;
   }
 
-  private cmdHeld(event: EngineKeyEvent): boolean {
-    return event.mods.super || (this.noSuper && event.mods.alt);
-  }
-
-  private accelHeld(event: EngineKeyEvent): boolean {
-    return this.cmdHeld(event) || (process.platform === "linux" && event.mods.ctrl);
+  private searchUrl(): SearchUrl {
+    return searchUrlFor(this.settings.get("search.engine"));
   }
 
   private closeOrShutdown(id: number) {
@@ -392,8 +437,6 @@ class Session {
     else this.tabs.close(id);
   }
 
-  // What another pixel app shows on this browser's tab when the
-  // browser is a guest in its pane.
   private syncTitle() {
     const state = this.tabs.activeState;
     this.root?.setTitle(state ? state.title || displayUrl(state.url) : "");
@@ -408,6 +451,7 @@ class Session {
     this.shownRecord = null;
     this.registry?.dispose();
     this.registry = null;
+    this.settings.dispose();
     this.tabs.stopAll();
     if (this.root) this.root.stop(code);
     else this.ctx.onClose(code);
@@ -417,8 +461,6 @@ class Session {
     this.root?.nudgeResize();
   }
 
-  // The app is started on this browser's tty, so if it is a pixel
-  // app it joins this pane as a tab rather than opening one of its own.
   private launchApp(app: RegisteredApp) {
     const env = { ...this.ctx.env };
     if (this.registry) env.TERMINAL_BROWSER_INTEROP_TARGET = this.registry.socketPath;
@@ -432,10 +474,10 @@ class Session {
         env,
         windowsHide: true,
       });
-      child.on("error", () => this.showToast(`could not launch ${app.name}`, "failed"));
+      child.on("error", () => this.showToast(`Could not launch ${app.name}`, "failed"));
       child.unref();
     } catch {
-      this.showToast(`could not launch ${app.name}`, "failed");
+      this.showToast(`Could not launch ${app.name}`, "failed");
     }
   }
 
@@ -502,12 +544,15 @@ class Session {
             : null
         }
         pageMenu={this.pageMenuView()}
+        settings={this.settings.view()}
         dividerEngaged={this.dividerHover || this.dividerDragging}
         record={this.activeRecord()?.view() ?? null}
         recordSurface={this.activeRecord()?.surface ?? null}
         tabViews={this.tabViews()}
         tabActions={this.tabActions}
         devtools={this.devtoolsView()}
+        profiling={this.profiling}
+        grabActive={this.activeGrab()?.active ?? false}
       />,
     );
   }
@@ -535,11 +580,13 @@ class Session {
       this.render();
     },
     paletteRun: (index) => this.runPalette(index),
+    profileStop: () => void this.toggleProfile(),
     paletteClose: () => this.closePalette(),
     tabSwitch: (id) => this.tabs.activate(id),
     tabClose: (id) => this.closeOrShutdown(id),
     tabNew: () => this.openNewTabModal(),
     tabMenu: () => this.toggleToolbarMenu(),
+    grab: () => void this.toggleGrab(),
     newTabQuery: (text) => this.newTabQuery(text),
     newTabSubmit: (text) => {
       this.closeNewTabModal();
@@ -550,7 +597,7 @@ class Session {
     devtoolsDividerHover: (hovering) => {
       this.dividerHover = hovering;
       this.root?.setPointerShape(
-        hovering ? (this.devtoolsDockSide === "bottom" ? "row-resize" : "col-resize") : "default",
+        hovering ? (this.devtoolsDockSide === "bottom" ? "ns-resize" : "ew-resize") : "default",
       );
       this.render();
     },
@@ -584,8 +631,25 @@ class Session {
     },
     pageMenuAction: (id) => this.runPageMenu(id),
     pageMenuClose: () => this.closePageMenu(),
+    settings: this.settings.actions,
     record: this.recordActions(),
   };
+
+  private openSettings() {
+    if (this.palette || this.newTab || this.urlEditOpen) return;
+    this.closePageMenu();
+    this.settings.open();
+  }
+
+  private enterOverlay(captureKeys: string[]) {
+    this.blurToOverlay();
+    this.root?.setKeyCapture(captureKeys);
+  }
+
+  private leaveOverlay() {
+    this.root?.setKeyCapture(this.findOpen ? ["enter"] : []);
+    this.refocusPage();
+  }
 
   /** the record session lives with its tab; the active tab's session gets the UI and input */
   private activeRecord(): RecordSession | null {
@@ -674,6 +738,8 @@ class Session {
             if (this.shownRecord?.target.tabId === tab.id) this.shownRecord = null;
             this.syncRecordLayout();
           },
+          isRecordKey: (event) => this.keymap.match(event) === "record.toggle",
+          recordKeyLabel: () => this.keymap.label("record.toggle"),
         },
         this.recordTarget(tab),
       );
@@ -692,13 +758,20 @@ class Session {
     this.render();
   }
 
-  // Returns true when the browser consumed the key; anything else reaches the
-  // focused page through pixel.
   private handleKey(event: EngineKeyEvent): boolean {
     const handle = this.tabs.activeHandle;
     if (event.kind === "release") return false;
-    const quitKey = event.key === "q" || (process.platform === "darwin" && event.key === "c");
-    if (event.mods.ctrl && quitKey) {
+    if (this.settings.recording) {
+      this.settings.recordKey(event);
+      return true;
+    }
+    const devSocket = this.ctx.env.TERMINAL_BROWSER_DEV_SOCKET;
+    if (devSocket && event.mods.ctrl && event.mods.shift && event.key === "r") {
+      this.requestDevReload(devSocket);
+      return true;
+    }
+    const command = this.keymap.match(event);
+    if (command === "quit") {
       this.shutdown(0, "quit key");
       return true;
     }
@@ -710,9 +783,13 @@ class Session {
       this.closePageMenu();
       if (event.key === "escape") return true;
     }
+    if (this.settings.isOpen) {
+      if (event.key === "escape" || command === "settings.open") this.settings.close();
+      return true;
+    }
     if (this.palette) {
       const step = listStep(event);
-      if (event.key === "escape" || matchesBinding(event, this.paletteBinding)) {
+      if (event.key === "escape" || command === "palette") {
         this.closePalette();
       } else if (step) {
         const count = this.filteredPalette().length;
@@ -751,40 +828,6 @@ class Session {
       return true;
     }
     if (!this.findOpen && this.activeRecord()?.handleKey(event)) return true;
-    {
-      if (isRecordKey(event)) {
-        if (!this.activeRecord()) void this.startRecording();
-        return true;
-      }
-      if (isGrabKey(event)) {
-        void this.toggleGrab();
-        return true;
-      }
-      if ((this.cmdHeld(event) || event.mods.ctrl) && event.key === "t") {
-        if (!this.activeRecord()?.reviewing) this.openNewTabModal();
-        return true;
-      }
-      if (matchesBinding(event, this.paletteBinding)) {
-        this.openPalette();
-        return true;
-      }
-      if (this.accelHeld(event) && event.key === "l") {
-        this.openUrlEdit();
-        return true;
-      }
-      if (matchesBinding(event, this.findBinding)) {
-        this.openFind();
-        return true;
-      }
-      if (matchesBinding(event, this.devtoolsBinding) || isPlainKey(event, "f12")) {
-        this.toggleDevtools();
-        return true;
-      }
-      if (matchesBinding(event, this.consoleBinding)) {
-        this.toggleDevtoolsConsole();
-        return true;
-      }
-    }
     if (event.key === "escape" && this.findOpen) {
       this.closeFind();
       return true;
@@ -793,31 +836,85 @@ class Session {
       handle?.findNext(!event.mods.shift);
       return true;
     }
-    {
-      if (this.accelHeld(event) && event.key === "r") {
-        this.activeRecord()?.reloaded();
-        handle?.reload();
-        return true;
-      }
-      if ((this.accelHeld(event) || event.mods.ctrl) && event.key === "[") {
-        handle?.back();
-        return true;
-      }
-      if ((this.accelHeld(event) || event.mods.ctrl) && event.key === "]") {
-        handle?.forward();
-        return true;
-      }
-      if (this.cmdHeld(event) || event.mods.ctrl) {
-        const direction = zoomDirection(event.key);
-        if (direction !== null) {
-          const shifted = event.mods.shift || event.key === "+" || event.key === "_";
-          if (shifted) this.zoomUi(direction);
-          else this.applyZoom(direction);
-          return true;
-        }
-      }
+    if (command) {
+      this.runCommand(command);
+      return true;
     }
     return false;
+  }
+
+  private runCommand(id: CommandId) {
+    this.telemetry.used();
+    const handle = this.tabs.activeHandle;
+    switch (id) {
+      case "quit":
+        this.shutdown();
+        return;
+      case "palette":
+        this.openPalette();
+        return;
+      case "settings.open":
+        this.openSettings();
+        return;
+      case "tab.new":
+        if (!this.activeRecord()?.reviewing) this.openNewTabModal();
+        return;
+      case "tab.close": {
+        const tab = this.tabs.active;
+        if (tab && !this.activeRecord()?.reviewing) this.closeOrShutdown(tab.id);
+        return;
+      }
+      case "url.edit":
+        this.openUrlEdit();
+        return;
+      case "find":
+        this.openFind();
+        return;
+      case "page.reload":
+        this.activeRecord()?.reloaded();
+        handle?.reload();
+        return;
+      case "page.back":
+        handle?.back();
+        return;
+      case "page.forward":
+        handle?.forward();
+        return;
+      case "devtools.toggle":
+        this.toggleDevtools();
+        return;
+      case "devtools.console":
+        this.toggleDevtoolsConsole();
+        return;
+      case "record.toggle": {
+        const record = this.activeRecord();
+        if (!record) void this.startRecording();
+        else if (record.reviewing) record.actions.complete();
+        else record.actions.stop();
+        return;
+      }
+      case "grab.toggle":
+        void this.toggleGrab();
+        return;
+      case "zoom.in":
+        this.applyZoom(1);
+        return;
+      case "zoom.out":
+        this.applyZoom(-1);
+        return;
+      case "zoom.reset":
+        this.applyZoom(0);
+        return;
+      case "ui.zoom.in":
+        this.zoomUi(1);
+        return;
+      case "ui.zoom.out":
+        this.zoomUi(-1);
+        return;
+      case "ui.zoom.reset":
+        this.zoomUi(0);
+        return;
+    }
   }
 
   private applyZoom(direction: ZoomDirection) {
@@ -868,15 +965,75 @@ class Session {
     this.render();
   }
 
-  private showToast(text: string, state: "done" | "failed" | "alert", detail?: string) {
-    this.toast = { text, detail, failed: state === "failed", alert: state === "alert" };
+  private showToast(
+    text: string,
+    state: "done" | "failed" | "alert",
+    detail?: string,
+    action?: ToastView["action"],
+  ) {
+    this.toast = { text, detail, failed: state === "failed", alert: state === "alert", action };
     if (this.toastTimer) clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => {
-      this.toast = null;
-      this.toastTimer = null;
-      this.render();
-    }, 2000);
+    this.toastTimer = setTimeout(
+      () => {
+        this.toast = null;
+        this.toastTimer = null;
+        this.render();
+      },
+      action ? 8000 : 2000,
+    );
     this.render();
+  }
+
+  private async toggleProfile() {
+    if (!this.root) return;
+    if (!this.profiling) {
+      this.root.startProfile();
+      this.profiling = true;
+      this.render();
+      return;
+    }
+    this.profiling = false;
+    this.render();
+    const exported = await this.root.stopProfile();
+    if (!exported) {
+      this.showToast("Nothing was recorded", "failed");
+      return;
+    }
+    clipboard.writeText(exported);
+    const root = this.root;
+    this.showToast("Profile path copied to clipboard", "done", undefined, {
+      label: "View profile",
+      run: () => {
+        this.toast = null;
+        this.render();
+        root.openDevtools("profiler");
+      },
+    });
+  }
+
+  private checkForUpdate() {
+    // The release feed lists upstream's macOS and Linux builds, which this platform cannot install.
+    if (process.platform === "win32") return;
+    if (this.release.version === "dev" || this.settings.get("updates.check") === "off") return;
+    fetchLatestRelease(installedChannel(), AbortSignal.timeout(5000))
+      .then((latest) => {
+        if (latest.version === this.release.version) return;
+        this.release.latest = latest.version;
+        this.render();
+      })
+      .catch(() => {});
+  }
+
+  private applyRenderSettings() {
+    const root = this.root;
+    if (!root) return;
+    const render = {
+      maxFps: maxFps(this.settings.get("render.fps"), displayHz()),
+      highlightTransmits: this.settings.get("render.transmitOutlines") === "on",
+      frameEvents: this.settings.get("render.frameEvents") === "on",
+    };
+    root.setRender(render);
+    root.setLogFile(this.settings.get("debug.logFile") === "on" ? ENGINE_LOG_FILE : null);
   }
 
   private blurToOverlay() {
@@ -929,7 +1086,7 @@ class Session {
 
   private async loadDevtoolsSettings() {
     try {
-      const [row] = await store().db.select().from(settings);
+      const [row] = await store().db.select().from(settingsTable);
       if (!row) return;
       this.devtoolsDockSide = row.devtoolsDock;
       this.devtoolsFraction = clampDevtoolsFraction(row.devtoolsFraction);
@@ -943,15 +1100,15 @@ class Session {
       devtoolsFraction: this.devtoolsFraction,
     };
     void store()
-      .db.insert(settings)
+      .db.insert(settingsTable)
       .values(row)
-      .onConflictDoUpdate({ target: settings.id, set: row })
+      .onConflictDoUpdate({ target: settingsTable.id, set: row })
       .catch(() => { });
   }
 
   private openPageMenu(params: Electron.ContextMenuParams) {
     if (!this.surfaceLayout) return;
-    if (this.palette || this.newTab || this.urlEditOpen) return;
+    if (this.palette || this.newTab || this.urlEditOpen || this.settings.isOpen) return;
     const scale = this.surfaceLayout.scale;
     this.pageMenu = {
       kind: "page",
@@ -976,7 +1133,7 @@ class Session {
       this.closePageMenu();
       return;
     }
-    if (this.palette || this.newTab || this.urlEditOpen) return;
+    if (this.palette || this.newTab || this.urlEditOpen || this.settings.isOpen) return;
     this.pageMenu = { kind: "toolbar" };
     this.render();
   }
@@ -988,6 +1145,9 @@ class Session {
     const handle = tab?.ref.current;
     if (!menu || !tab || !handle) return;
     switch (id) {
+      case "settings":
+        this.openSettings();
+        return;
       case "grab":
         void this.toggleGrab();
         return;
@@ -1038,7 +1198,7 @@ class Session {
     const watcher = new CopyOnSelect(handle, {
       copied: (text) => {
         this.root?.setClipboard(text);
-        this.showToast("copied to clipboard", "done");
+        this.showToast("Copied to clipboard", "done");
       },
     });
     this.copyWatchers.set(tab.id, watcher);
@@ -1050,6 +1210,7 @@ class Session {
     if (!grab) {
       grab = new Grab(handle, {
         selected: (content) => void this.sendGrab(content),
+        changed: () => this.render(),
       });
       this.grabs.set(tab.id, grab);
     }
@@ -1076,7 +1237,7 @@ class Session {
     this.root?.setClipboard(content);
     try {
       const target = await this.agentPanes.send(content);
-      this.showToast(target ? "Sent to agent" : "copied to clipboard", "done");
+      this.showToast(target ? "Sent to agent" : "Copied to clipboard", "done");
     } catch (error) {
       this.showToast(error instanceof Error ? error.message : String(error), "failed");
     }
@@ -1085,28 +1246,41 @@ class Session {
   private grabMenuItem(): PageMenuItem {
     return {
       id: "grab",
-      label: this.activeGrab()?.active ? "stop selection" : "send to agent",
+      label: this.activeGrab()?.active ? "Stop selection" : "Send to agent",
       enabled: true,
-      shortcut: grabKeyLabel,
-      icon: this.grabIcon ? { kind: "image", src: this.grabIcon } : undefined,
+      shortcut: this.keymap.label("grab.toggle"),
+      icon: { kind: "path", d: ICONS.select },
     };
   }
 
   private toolMenuItems(): PageMenuItem[] {
     return [
-      this.grabMenuItem(),
       {
         id: "record",
-        label: this.activeRecord() ? "complete recording" : "record",
+        label: this.activeRecord() ? "Complete recording" : "Record",
         enabled: true,
-        shortcut: this.activeRecord() ? "" : recordKeyLabel,
-        icon: { kind: "path", d: ICONS.record, tint: "red", weight: 4.5 },
+        shortcut: this.activeRecord() ? "" : this.keymap.label("record.toggle"),
+        icon: { kind: "path", d: ICONS.record, tint: "red", weight: 8 },
       },
       {
         id: "inspect",
-        label: "inspect",
+        label: "Inspect",
         enabled: true,
-        shortcut: bindingLabel(this.devtoolsBinding),
+        shortcut: this.keymap.label("devtools.toggle"),
+        icon: this.inspectIcon ? { kind: "image", src: this.inspectIcon } : undefined,
+      },
+    ];
+  }
+
+  private toolbarMenuItems(): PageMenuItem[] {
+    return [
+      ...this.toolMenuItems(),
+      {
+        id: "settings",
+        label: commandLabel("settings.open"),
+        enabled: true,
+        shortcut: this.keymap.label("settings.open"),
+        icon: { kind: "path", d: ICONS.settings },
       },
     ];
   }
@@ -1114,14 +1288,14 @@ class Session {
   private pageMenuView(): PageMenuView | null {
     if (!this.pageMenu || !this.layout) return null;
     if (this.pageMenu.kind === "toolbar") {
-      return { x: this.layout.width, y: this.layout.toolbarHeight, items: this.toolMenuItems() };
+      return { x: this.layout.width, y: this.layout.toolbarHeight, items: this.toolbarMenuItems() };
     }
     const items: PageMenuItem[] = [
       ...(this.pageMenu.selectionText
         ? [
             {
               id: "copy",
-              label: "copy",
+              label: "Copy",
               enabled: true,
               shortcut: process.platform === "darwin" ? "cmd+c" : "ctrl+c",
             },
@@ -1129,10 +1303,11 @@ class Session {
         : []),
       ...(this.pageMenu.linkURL
         ? [
-            { id: "open-link-tab", label: "open link in new tab", enabled: true, shortcut: "" },
-            { id: "copy-link", label: "copy link address", enabled: true, shortcut: "" },
+            { id: "open-link-tab", label: "Open link in new tab", enabled: true, shortcut: "" },
+            { id: "copy-link", label: "Copy link address", enabled: true, shortcut: "" },
           ]
         : []),
+      this.grabMenuItem(),
       ...this.toolMenuItems(),
     ];
     return { x: this.pageMenu.x, y: this.pageMenu.y, items };
@@ -1210,7 +1385,7 @@ class Session {
     session.appMatches = matchApps(session.apps, text);
     if (session.timer) clearTimeout(session.timer);
     session.timer = null;
-    if (!text.trim()) {
+    if (!text.trim() || this.settings.get("search.suggestions") === SUGGESTIONS_OFF) {
       session.seq++;
       session.suggestions = [];
       this.render();
@@ -1224,7 +1399,7 @@ class Session {
     const session = this.newTab;
     if (!session) return;
     const seq = ++session.seq;
-    fetchSuggestions(query)
+    fetchSuggestions(this.settings.get("search.suggestions"), query)
       .then((suggestions) => {
         if (this.newTab !== session || session.seq !== seq) return;
         session.suggestions = suggestions;
@@ -1253,18 +1428,15 @@ class Session {
 
   private openPalette() {
     if (this.palette) return;
-    this.paletteApps = safeListApps();
     this.palette = { query: "", index: 0 };
-    this.blurToOverlay();
-    this.root?.setKeyCapture(["enter", "up", "down"]);
+    this.enterOverlay(["enter", "up", "down"]);
     this.render();
   }
 
   private closePalette() {
     if (!this.palette) return;
     this.palette = null;
-    this.root?.setKeyCapture(this.findOpen ? ["enter"] : []);
-    this.refocusPage();
+    this.leaveOverlay();
     this.render();
   }
 
@@ -1277,61 +1449,91 @@ class Session {
 
   private paletteActions(): PaletteAction[] {
     const devtoolsOpen = this.tabs.active?.devtools ?? false;
+    const command = (id: CommandId): PaletteAction => ({
+      id,
+      label: this.paletteLabel(id),
+      shortcut: this.paletteShortcut(id),
+      run: () => this.runCommand(id),
+    });
     return [
-      {
-        id: "find",
-        label: "find in page",
-        shortcut: bindingLabel(this.findBinding),
-        run: () => this.openFind(),
-      },
-      {
-        id: "record",
-        label: this.activeRecord()
-          ? this.activeRecord()?.reviewing
-            ? "complete recording"
-            : "stop recording"
-          : "record page",
-        shortcut: this.activeRecord()?.reviewing ? "ctrl+enter" : recordKeyLabel,
-        run: () => {
-          const record = this.activeRecord();
-          if (!record) void this.startRecording();
-          else if (record.reviewing) record.actions.complete();
-          else record.actions.stop();
-        },
-      },
-      {
-        id: "grab",
-        label: this.activeGrab()?.active ? "stop selection" : "send to agent",
-        shortcut: grabKeyLabel,
-        run: () => void this.toggleGrab(),
-      },
-      {
-        id: "devtools",
-        label: devtoolsOpen ? "close devtools" : "open devtools",
-        shortcut: bindingLabel(this.devtoolsBinding),
-        run: () => this.toggleDevtools(),
-      },
-      ...(devtoolsOpen
+      command("find"),
+      command("record.toggle"),
+      command("grab.toggle"),
+      command("devtools.toggle"),
+      ...(DEV_BUILD
         ? [
           {
-            id: "devtools-dock",
-            label:
-              this.devtoolsDockSide === "bottom"
-                ? "dock devtools right"
-                : "dock devtools bottom",
+            id: "profile",
+            label: this.profiling ? "Stop profile" : "Start profile",
+            shortcut: "",
+            run: () => void this.toggleProfile(),
+          },
+          {
+            id: "highlight-transmits",
+            label: this.root?.highlightTransmits()
+              ? "Hide transmit outlines"
+              : "Show transmit outlines",
             shortcut: "",
             run: () =>
-              this.setDevtoolsDockSide(this.devtoolsDockSide === "bottom" ? "right" : "bottom"),
+              this.settings.actions.set(
+                "render.transmitOutlines",
+                this.root?.highlightTransmits() ? "off" : "on",
+              ),
           },
         ]
         : []),
-      ...this.paletteApps.map((app) => ({
-        id: `app:${app.id}`,
-        label: `open ${app.name}`,
-        shortcut: "",
-        run: () => this.launchApp(app),
-      })),
+      ...(devtoolsOpen
+        ? [
+            {
+              id: "devtools-dock",
+              label:
+                this.devtoolsDockSide === "bottom"
+                  ? "Dock devtools right"
+                  : "Dock devtools bottom",
+              shortcut: "",
+              run: () =>
+                this.setDevtoolsDockSide(this.devtoolsDockSide === "bottom" ? "right" : "bottom"),
+            },
+          ]
+        : []),
+      ...(this.ctx.env.TERMINAL_BROWSER_DEV_SOCKET
+        ? [
+          {
+            id: "dev-reload",
+            label: "Reload instance",
+            shortcut: "ctrl+shift+r",
+            run: () => this.requestDevReload(this.ctx.env.TERMINAL_BROWSER_DEV_SOCKET!),
+          },
+        ]
+        : []),
+      command("settings.open"),
     ];
+  }
+
+  private requestDevReload(socketPath: string) {
+    const connection = net.connect(socketPath, () => connection.end("reload\n"));
+    connection.on("error", () => {});
+  }
+
+  private paletteLabel(id: CommandId): string {
+    switch (id) {
+      case "record.toggle": {
+        const record = this.activeRecord();
+        if (!record) return "Record page";
+        return record.reviewing ? "Complete recording" : "Stop recording";
+      }
+      case "grab.toggle":
+        return this.activeGrab()?.active ? "Stop selection" : "Send to agent";
+      case "devtools.toggle":
+        return this.tabs.active?.devtools ? "Close devtools" : "Open devtools";
+      default:
+        return commandLabel(id);
+    }
+  }
+
+  private paletteShortcut(id: CommandId): string {
+    if (id === "record.toggle" && this.activeRecord()?.reviewing) return "ctrl+enter";
+    return this.keymap.label(id);
   }
 
   private filteredPalette(): PaletteAction[] {
@@ -1361,7 +1563,8 @@ class Session {
   }
 
   private resolveInput(text: string): string {
-    return normalizeUrl(searchOrUrl(text, this.ctx.cwd), this.ctx.cwd);
+    const search = this.searchUrl();
+    return normalizeUrl(searchOrUrl(text, this.ctx.cwd, search), this.ctx.cwd, search);
   }
 
   pageContext(): PageContext {
@@ -1375,7 +1578,7 @@ class Session {
 
   private initialUrl(): string {
     const arg = this.argv.find((argument) => !argument.startsWith("-"));
-    if (arg) return normalizeUrl(arg, this.ctx.cwd);
+    if (arg) return normalizeUrl(arg, this.ctx.cwd, this.searchUrl());
     try {
       const last = lastUrl()?.trim();
       if (last && /^https?:\/\//.test(last)) return last;
@@ -1389,29 +1592,6 @@ interface PaletteAction {
   label: string;
   shortcut: string;
   run(): void;
-}
-
-function isPlainKey(event: EngineKeyEvent, key: string): boolean {
-  return (
-    event.key === key &&
-    !event.mods.super &&
-    !event.mods.ctrl &&
-    !event.mods.alt &&
-    !event.mods.shift
-  );
-}
-
-function defaultBinding(spec: string, noSuper: boolean): string {
-  if (!noSuper) return spec;
-  return spec
-    .split(/\s+/)
-    .map((chord) => {
-      const parts = chord.split("+");
-      const key = parts.pop()!;
-      const mods = [...new Set(parts.map((mod) => (mod === "super" ? "alt" : mod)))];
-      return [...mods, key].join("+");
-    })
-    .join(" ");
 }
 
 function splitDirection(value: string | null): InstanceRow["splitDir"] {

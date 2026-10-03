@@ -3,7 +3,6 @@ import { Box, Text } from "@zenbu-labs/pixel";
 import type { Rgba } from "@zenbu-labs/pixel";
 import { measureText } from "../record/model";
 import type { InteractionKind, RecordView } from "../record/types";
-import { recordKeyLabel } from "../session/keybindings";
 import { displayUrl } from "../url";
 import { Icon } from "./icons";
 import type { IconName } from "./icons";
@@ -33,10 +32,10 @@ function interactionColor(kind: InteractionKind, theme: Theme): Rgba {
 }
 
 const INTERACTION_LABELS: Record<InteractionKind, string> = {
-  click: "click",
-  link: "link opened",
-  reload: "reload",
-  load: "page load",
+  click: "Click",
+  link: "Link opened",
+  reload: "Reload",
+  load: "Page load",
 };
 
 /** hover tooltip above a track marker, centered on the marker's box */
@@ -681,7 +680,7 @@ function Track({
             <TrackIcon
               icon="pen"
               color={theme.yellow}
-              label="has edits"
+              label="Has edits"
               x={center}
               trackY={trackY}
               rem={rem}
@@ -808,7 +807,7 @@ export function ReviewToolbar({
       >
         <Icon icon="close" size={rem * 0.95} color={theme.muted} />
         <Text style={{ fontSize: rem * 0.68, color: theme.disabled, wrap: false, selectable: false }}>
-          {recordKeyLabel}
+          {view.recordKey}
         </Text>
       </Box>
       <Box
@@ -838,7 +837,7 @@ export function ReviewToolbar({
       <ShotThumb view={view} rem={rem} theme={theme} />
       {view.keyframeCount > 0 && (
         <Text style={{ fontSize: rem * 0.68, color: theme.disabled, wrap: false, selectable: false }}>
-          {view.keyframeCount > 1 ? "tab to cycle" : "tab to view"}
+          {view.keyframeCount > 1 ? "Tab to cycle" : "Tab to view"}
         </Text>
       )}
       <RecordToolbarPill view={view} actions={actions} rem={rem} theme={theme} />
@@ -895,7 +894,7 @@ export function RecordToolbarPill({
           selectable: false,
         }}
       >
-        {stopped ? "complete" : "stop"}
+        {stopped ? "Complete" : "Stop"}
       </Text>
       <Text
         style={{
@@ -905,7 +904,7 @@ export function RecordToolbarPill({
           selectable: false,
         }}
       >
-        {stopped ? "ctrl+enter" : recordKeyLabel}
+        {stopped ? "ctrl+enter" : view.recordKey}
       </Text>
     </Box>
   );

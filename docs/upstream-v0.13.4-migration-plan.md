@@ -15,8 +15,50 @@ Windows 対応フォーク (`windows-v0.11.1`) を upstream `zenbu-labs/terminal
 - Pixel は別リポジトリ `fukuyori/pixel` の `windows-v0.11.1`（`5bb53b9`）を `pixel.commit` で pin している。
 - 未解決の issue は [#1 原因不明のブラウザ終了](https://github.com/fukuyori/terminal-browser/issues/1) と
   [#2 WezTerm での Image 非対応](https://github.com/fukuyori/terminal-browser/issues/2)。
-- 両リポジトリのローカル `main` は upstream の `main` に fast-forward 済み。`origin/main` へは未 push。
-- フォークの GitHub 既定ブランチは `windows-native` のまま。
+- 両リポジトリのローカル `main` は upstream の `main` に fast-forward 済み。本体の `origin/main` へは push 済み、Pixel は未 push。
+- フォークの GitHub 既定ブランチは `windows-native`（v0.8.0 を基にした旧 Windows 版）。移行後の取り込み先になる。
+
+## 作業の進捗（2026-10-03）
+
+ブランチ `windows-v0.13.4` で段階 0〜5 の実装を進めた。段階 6 の実機確認と段階 7 は未着手。
+
+| 段階 | 状態 |
+|---|---|
+| 0 準備 | ブランチ作成済み。`shm` 形式の `source` の確認は、決定事項 5 の結果により不要になった |
+| 1 本体のマージ | 20 ファイルの衝突を解消。`pixel-store` を `shared` に置換し、終了診断ログとテストを `shared/` へ移した |
+| 2 Pixel | フォークの変更を `pixel/` に 3-way で適用し、10 ファイルの衝突を解消。iTerm 画像経路を新しい描画経路へ移し、共有メモリを Windows で無効にした |
+| 3 新機能 | テレメトリ停止、更新確認の Windows での停止、終了キーの既定、`scripts/dev.mjs` の Windows 対応を実装 |
+| 4 スクリプト | `build-windows.ps1` をリポジトリ内の `pixel/` をビルドする形にした。`pixel.commit` と `-RequireCleanPixel` を廃止 |
+| 5 CI | workflow を 1 回の checkout に書き換えた。runner での実行は未確認 |
+
+ローカルでの確認結果（Windows、2026-10-03）:
+
+| 対象 | 結果 |
+|---|---|
+| Rust `cargo test`（pixel-core） | 249 件中 248 通過、1 件 ignored |
+| Rust `cargo test`（pixel-node） | 45 件通過 |
+| 型チェック（全ワークスペースとプラグイン） | 通過 |
+| pixel の JS テスト | 56 件中 46 通過、10 件スキップ |
+| shared / browser / cli のテスト | 26 / 34 / 36 件中 35 通過（1 件は opt-in のクリップボード） |
+| ネイティブアドオンの release ビルド | 成功 |
+| CLI とブラウザのバンドル生成 | 成功。CLI は `--version` に応答 |
+
+未確認の事項:
+
+- `build-windows.ps1` の通し実行。既存の `dist-release/` を消すため、ローカルでは実行していない。
+- 実際の端末での表示と操作。段階 6 で確認する。
+- `scripts/dev.mjs` の Windows での動作。構文確認だけ行った。
+- upstream の共有メモリ用テストは Unix 専用にしたため、Windows ではコンパイルも実行もされない。
+
+移行中に見つかった、計画に無かった事項:
+
+- upstream の更新確認は `terminal-browser.sh` のリリース情報を取りに行く。掲載されるのは macOS と Linux の
+  ビルドで、フォークの `upgrade` は Windows では失敗するため、Windows では確認を行わないようにした。
+- upstream のショートカットは修飾キーの完全一致で判定する。フォークが案内している `Ctrl+Shift+Q` での
+  終了が効かなくなるため、既定の終了キーに加えた。
+- `shared` の端末ソケットのテストは、Windows では名前付きパイプを使う形にした。その形で 4 件とも通過し、
+  ソケット接続が名前付きパイプで動くことを単体テストの範囲で確認した。
+- `scripts/pixel-paths.mjs` は残した。ワークスペースのリンク越しでも解決でき、2 リポジトリ構成に依存していないため。
 
 ## 調査時点のリビジョン
 
@@ -250,12 +292,17 @@ v0.11.1 そのものなので、通常のマージで履歴を保てる。Pixel 
 
 ### 5. Claude Code プラグインのフレーム経路
 
-推奨: プラグインと bridge の構造は upstream を採り、Windows だけフォークの
-ファイルフレーム + inline 画像の経路を残す。段階 0 で次を確認してから確定する。
+実施（2026-10-03）: プラグインの `bridge-protocol.ts`、`register.tsx`、`surface.tsx` と
+`cli/src/claude-bridge.ts` はフォーク版をそのまま採った。当初の推奨（upstream の構造を採る）から変更した。
 
-- Windows の Claude Code が `shm` 形式の `source` を受け付けるか。
-- 受け付けない場合、capability 名を upstream の `image-frames` に合わせたうえで
-  プラグイン側が OS によって `source` を切り替える形にできるか。
+- upstream の入力用 Client は、サイズ通知を描画時に、入力通知をタイマーから別々に送る。
+  フォークが「縮小後に拡大すると Loading のまま」の原因として修正した構造と同じ。
+- upstream のキー処理は 1 文字のキーだけを通す。フォークが修正した IME の複数文字確定を扱えない。
+- upstream のフレームは POSIX 共有メモリ前提で、Windows では使えない。
+- capability 名は `image-embedding` のまま。upstream の `image-frames` を名乗ると、共有メモリを
+  前提にした upstream のプラグインがフォークの CLI と組み合わさってしまうため。
+
+upstream 側にあってフォーク版に無い改良（`/state` の long-poll など）は取り込んでいない。
 
 issue #2（WezTerm）は upstream も Image 方式になったため、upstream 側の端末対応状況を見て再評価する。
 
@@ -289,8 +336,31 @@ XDG 形式を Windows でも使っているので揃う。
 
 ### 10. `origin/main` への push
 
-保留中。push すると upstream の `release` と `pixel-release` がフォーク上で起動する設定になっている。
-移行作業そのものには不要。
+実施済み（2026-10-03）: `fukuyori/terminal-browser` の `main` を upstream の `main`（`2bdf227`）へ
+fast-forward で push した。移行先の v0.13.4（`fd5f179`）はその 1 つ前のコミットで、`origin/main` に含まれる。
+`fukuyori/pixel` の `main` は push していない（移行後に削除するため）。
+
+### 11. 最終的な取り込み先
+
+決定（2026-10-03）: 移行が終わったら `windows-v0.13.4` を `windows-native` へマージする。
+`windows-native` はフォークの GitHub 既定ブランチ。
+
+2026-10-03 に確認した関係:
+
+- `windows-native`（`fd4be2f`）は upstream v0.8.0 を基にした旧 Windows 版で、タグ `0.5.8-win.1` と
+  `0.8.0-win.1` を含む。`windows-v0.11.1` との共通の祖先は v0.8.0（`8bf4675`）。
+- `windows-v0.11.1` は v0.11.1 から切り直して移植したブランチなので、`windows-native` はその祖先ではない。
+  `windows-native` だけにあるコミットは 20 件。
+- `windows-native` に `windows-v0.11.1` を通常のマージで取り込む試験では 39 ファイルが衝突した。
+  v0.13.4 への移行後はさらに離れる。
+
+推奨する方法: マージ結果の内容を移行ブランチと同一にする。`windows-v0.13.4` の側で
+`windows-native` を親に持つマージコミットを作り（内容は移行ブランチのまま）、
+`windows-native` をそこへ fast-forward する。旧版の履歴とタグは残り、衝突の解消は要らない。
+旧 Windows 実装は v0.11.1 への移行時に載せ直してあるので、`windows-native` 側の古いコードは引き継がない。
+
+マージの前に、`windows-native` だけにある 20 件のコミットに、移行ブランチへ載せていない内容が
+残っていないかを確認する。
 
 ## 作業手順
 
@@ -369,6 +439,9 @@ README（日英）、CHANGELOG（日英）、プラグイン README を更新す
   再ビルドの可能性を残す場合は、ローカルの Pixel リポジトリを保管しておく。
 
 削除は取り消せない操作なので、レモンが行うか、その時点の明示的な指示で行う。
+
+`windows-native` へのマージ（決定事項 11）は、`0.13.4-win.1` の実機確認が通ってから行う。
+マージ後は `windows-native` への push で Windows CI が動くよう、workflow の対象ブランチを合わせる。
 
 ## リスクと未確認事項
 

@@ -11,10 +11,10 @@
     "test": "tsc -p tsconfig.json && node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@zenbu-labs/pixel": "file:../../pixel/packages/pixel",
+    "@zenbu-labs/pixel": "workspace:*",
     "micromark": "^4.0.2",
     "micromark-extension-gfm": "^3.0.0",
-    "pixel-store": "workspace:*",
+    "shared": "workspace:*",
     "react": "^18.3.1",
     "react-grab": "0.2.0",
     "zod": "^4.4.3"

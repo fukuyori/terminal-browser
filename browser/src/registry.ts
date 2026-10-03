@@ -10,11 +10,11 @@ import {
   removeInstance,
   upsertInstance,
   withdrawInstance,
-} from "pixel-store";
-import type { InstanceRow } from "pixel-store";
+} from "shared";
+import type { InstanceRow } from "shared";
 
 import type { WebViewState } from "@zenbu-labs/pixel";
-import { INSTANCES_DIR } from "pixel-store";
+import { INSTANCES_DIR } from "shared";
 
 export interface Where {
   terminal: string | null;

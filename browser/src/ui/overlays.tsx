@@ -4,7 +4,7 @@ import type { WebViewState } from "@zenbu-labs/pixel";
 import { Icon } from "./icons";
 import type { IconName } from "./icons";
 import { mix, type Theme } from "./theme";
-import type { ChromeActions, ChromeLayout, DownloadView } from "./types";
+import type { ChromeActions, ChromeLayout, DownloadView, ToastView } from "./types";
 
 export function FindBar({
   state,
@@ -133,12 +133,13 @@ export function Toast({
   layout,
   theme,
 }: {
-  toast: { text: string; detail?: string; failed: boolean; alert: boolean };
+  toast: ToastView;
   layout: ChromeLayout;
   theme: Theme;
 }) {
   const rem = layout.rem;
   const detailLines = toast.detail ? toast.detail.split("\n") : [];
+  const action = toast.action;
   return (
     <Box
       style={{
@@ -147,7 +148,8 @@ export function Toast({
         flexDirection: "column",
         justifyContent: "center",
         gap: rem * 0.25,
-        height: detailLines.length > 0 ? rem * (2.3 + detailLines.length * 1.05) : rem * 2,
+        height:
+          rem * (2 + (detailLines.length > 0 ? 0.3 + detailLines.length * 1.05 : 0) + (toast.action ? 1.7 : 0)),
         padding: { left: rem * 0.9, right: rem * 0.9 },
         background: toast.alert ? mix(theme.overlay, theme.red, 0.22) : theme.overlay,
         cornerRadius: rem * 0.5,
@@ -177,6 +179,25 @@ export function Toast({
           {line}
         </Text>
       ))}
+      {action && (
+        <Box
+          style={{
+            height: rem * 1.4,
+            alignItems: "center",
+            justifyContent: "center",
+            padding: { left: rem * 0.6, right: rem * 0.6 },
+            cornerRadius: rem * 0.3,
+            background: mix(theme.overlay, theme.accent, 0.25),
+            hoverBackground: mix(theme.overlay, theme.accent, 0.45),
+            flexShrink: 0,
+          }}
+          onClick={action.run}
+        >
+          <Text style={{ fontSize: rem * 0.8, color: theme.fg, wrap: false, selectable: false }}>
+            {action.label}
+          </Text>
+        </Box>
+      )}
     </Box>
   );
 }

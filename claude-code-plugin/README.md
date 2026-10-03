@@ -12,8 +12,8 @@ https://github.com/user-attachments/assets/a79e7667-6fcb-49a4-9967-44d0f942102c
 ## Installation
 
 For the Windows fork, use Ghostty and load this checkout for the session.
-The Image migration is committed in this fork and requires the matching Pixel
-build pinned by [`pixel.commit`](../pixel.commit). The upstream marketplace
+The Image migration is committed in this fork and uses the Pixel build under
+[`pixel/`](../pixel) in this repository. The upstream marketplace
 installation below is a separate distribution and does not select this checkout.
 
 ```powershell
@@ -136,7 +136,7 @@ browser viewport, so a larger view can look less sharp without changing where
 clicks land. The pane is limited to 255 columns and rows; actual update rate
 depends on browser, encoding and terminal performance.
 
-terminal-browser's internals have been extracted to a javascript library - https://github.com/zenbu-labs/pixel - if you would like to build your own graphical application inside claude code/the terminal
+terminal-browser's internals have been extracted to a javascript library - https://github.com/zenbu-labs/terminal-browser/tree/main/pixel - if you would like to build your own graphical application inside claude code/the terminal
 
 
 ## Supported terminals

@@ -1,10 +1,9 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.11.1-win.1",
+    [string]$Version = "0.13.4-win.1",
     [string]$Channel = "windows",
     [string]$AgentBrowserPath = "",
     [switch]$Sign,
-    [switch]$RequireCleanPixel,
     [switch]$Zip
 )
 
@@ -27,32 +26,19 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     throw "Windows x64 is required"
 }
 
-$pixel = [IO.Path]::GetFullPath((Join-Path $root "..\pixel"))
-if (-not (Test-Path -LiteralPath (Join-Path $pixel "packages\pixel\package.json"))) {
-    throw "no pixel checkout at $pixel"
-}
-$wanted = (Get-Content -LiteralPath (Join-Path $root "pixel.commit") -Raw).Trim()
-$head = (git -C $pixel rev-parse HEAD).Trim()
-if ($head -ne $wanted) {
-    throw "pixel is at $head but pixel.commit asks for $wanted"
-}
-if ($RequireCleanPixel) {
-    $dirty = git -C $pixel status --porcelain
-    if ($dirty) {
-        throw "pixel has uncommitted changes:`n$($dirty -join "`n")"
-    }
-    # tsc leaves the output of deleted sources behind, and a failed native build
-    # leaves the last one, so these two are made again from scratch.
-    foreach ($stale in @("packages\pixel\dist", "packages\native\win32-x64\pixel.node")) {
-        $path = Join-Path $pixel $stale
-        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
-    }
+$pixel = Join-Path $root "pixel"
+
+# tsc leaves the output of deleted sources behind, and a failed native build
+# leaves the last one, so these two are made again from scratch.
+foreach ($stale in @("packages\pixel\dist", "packages\native\win32-x64\pixel.node")) {
+    $path = Join-Path $pixel $stale
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
 }
 
-Push-Location $pixel
+Push-Location $root
 try {
     corepack pnpm install --frozen-lockfile
-    if ($LASTEXITCODE -ne 0) { throw "pixel install failed" }
+    if ($LASTEXITCODE -ne 0) { throw "install failed" }
     corepack pnpm --filter "@zenbu-labs/pixel" build
     if ($LASTEXITCODE -ne 0) { throw "pixel build failed" }
     corepack pnpm --filter "@zenbu-labs/pixel" build:native -- --release
@@ -61,23 +47,15 @@ try {
     Pop-Location
 }
 
-# file: dependencies are copied in, so this is what carries the pixel just
-# built into browser/ and cli/.
-Push-Location $root
-try {
-    corepack pnpm install --frozen-lockfile
-    if ($LASTEXITCODE -ne 0) { throw "install failed" }
-} finally {
-    Pop-Location
-}
-
-if (Test-Path -LiteralPath $out) {
+# Only the unpacked payload is rebuilt. Archives and installers of other
+# versions stay beside it, since they may be what a release was published from.
+if (Test-Path -LiteralPath $stage) {
     $resolvedRoot = [IO.Path]::GetFullPath($root).TrimEnd('\')
-    $resolvedOut = [IO.Path]::GetFullPath($out).TrimEnd('\')
-    if (-not $resolvedOut.StartsWith("$resolvedRoot\", [StringComparison]::OrdinalIgnoreCase)) {
-        throw "refusing to remove output outside the repository: $resolvedOut"
+    $resolvedStage = [IO.Path]::GetFullPath($stage).TrimEnd('\')
+    if (-not $resolvedStage.StartsWith("$resolvedRoot\", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "refusing to remove output outside the repository: $resolvedStage"
     }
-    Remove-Item -LiteralPath $out -Recurse -Force
+    Remove-Item -LiteralPath $stage -Recurse -Force
 }
 
 $directories = @(
@@ -90,7 +68,9 @@ $directories = @(
     "agent-browser\bin",
     "skills",
     "assets\fonts",
-    "assets\react-grab"
+    "assets\react-grab",
+    "assets\search",
+    "assets\chromium"
 )
 foreach ($directory in $directories) {
     New-Item -ItemType Directory -Path (Join-Path $stage $directory) -Force | Out-Null
@@ -133,6 +113,10 @@ foreach ($asset in @("index.global.js", "logo.png")) {
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "assets\react-grab")
 }
 
+foreach ($assets in @("search", "chromium")) {
+    Copy-Item -Path (Join-Path $root "assets\$assets\*") -Destination (Join-Path $stage "assets\$assets") -Force
+}
+
 $electronDist = node (Join-Path $root "scripts\pixel-paths.mjs") electron
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $electronDist ".zenbu-electron-sha256"))) {
     throw "pixel has not installed its electron; run corepack pnpm install first"
@@ -170,13 +154,13 @@ Set-Content -LiteralPath (Join-Path $stage "bin\terminal-browser.cmd") -Value $l
 Set-Content -LiteralPath (Join-Path $stage "VERSION") -Value $Version -Encoding ascii
 Set-Content -LiteralPath (Join-Path $stage "CHANNEL") -Value $Channel -Encoding ascii
 
-# The engine binary travels from the pixel checkout through node_modules and
-# into the payload, and a stale copy at either step is silent. Compare them
-# before signing, which rewrites the payload's copy and would hide the answer.
+# The engine binary travels from where it is built, through what browser/
+# resolves, into the payload, and a stale copy at either step is silent. Compare
+# them before signing, which rewrites the payload's copy and would hide the answer.
 $engineCopies = [ordered]@{
-    "pixel checkout" = Join-Path $pixel "packages\native\win32-x64\pixel.node"
-    "node_modules"   = Join-Path $nativePackage "pixel.node"
-    "payload"        = Join-Path $stage "browser\node_modules\@zenbu-labs\pixel-native-win32-x64\pixel.node"
+    "pixel build"  = Join-Path $pixel "packages\native\win32-x64\pixel.node"
+    "node_modules" = Join-Path $nativePackage "pixel.node"
+    "payload"      = Join-Path $stage "browser\node_modules\@zenbu-labs\pixel-native-win32-x64\pixel.node"
 }
 $engineHashes = [ordered]@{}
 foreach ($where in $engineCopies.Keys) {
@@ -199,7 +183,7 @@ if (-not $Zip) {
 }
 
 $archive = Join-Path $out "terminal-browser-$Version-$target.zip"
-Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal
+Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal -Force
 $item = Get-Item -LiteralPath $archive
 $manifest = [ordered]@{
     version = $Version

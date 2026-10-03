@@ -260,7 +260,7 @@ function LinkToast({ view, toView }: { view: MarkupCanvasView; toView: (p: Vec) 
           selectable: false,
         }}
       >
-        link opened
+        Link opened
       </Text>
       <Text
         style={{
@@ -759,7 +759,7 @@ function Toolbar({
           >
             <Icon icon="camera" size={rem * 0.95} color={theme.muted} />
             <Text style={{ fontSize: rem * 0.72, color: theme.fg, wrap: false, selectable: false }}>
-              screenshot
+              Screenshot
             </Text>
             <Text style={{ fontSize: rem * 0.65, color: theme.muted, wrap: false, selectable: false }}>
               enter

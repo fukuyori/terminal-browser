@@ -5,7 +5,7 @@ import path from "node:path";
 import { app } from "electron";
 
 // why is this defined in pixel store?
-import { DAEMON_SOCKET, logLifecycle, observeProcessExit } from "pixel-store";
+import { DAEMON_SOCKET, logLifecycle, observeProcessExit } from "shared";
 import { createSession } from "./session/session";
 import type { SessionHandle } from "./session/session";
 import { servePages } from "./pages/scheme";

@@ -10,7 +10,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { attachWindowsConsole, callerTty } from "@zenbu-labs/pixel/terminal";
-import { ipcEndpoint, logLifecycle, observeProcessExit } from "pixel-store";
+import { ipcEndpoint, logLifecycle, observeProcessExit } from "shared";
 
 import { installedVersion } from "./upgrade";
 import { FrameHost } from "./claude-frame-host";

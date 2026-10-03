@@ -122,13 +122,12 @@ remains unexplained; those passes do not establish sustained reliability.
 
 ### Build Windows from source
 
-Place a checkout of [fukuyori/pixel](https://github.com/fukuyori/pixel) at
-`../pixel`, checked out at the full SHA in [pixel.commit](pixel.commit).
-The build script installs and builds Pixel before installing this workspace.
-Run from the terminal-browser repository:
+Pixel, the rendering engine, lives in this repository under `pixel/`. The build
+script installs the workspace, then builds Pixel and its native addon from scratch.
+Run from the repository root:
 
 ```powershell
-.\scripts\build-windows.ps1 -RequireCleanPixel
+.\scripts\build-windows.ps1
 .\scripts\package-windows-inno.ps1
 ```
 
@@ -136,7 +135,7 @@ The build writes the unpacked payload to `dist-release\terminal-browser`. Add `-
 `dist-release\terminal-browser-<version>-windows-x64.zip`:
 
 ```powershell
-.\scripts\build-windows.ps1 -Zip -RequireCleanPixel
+.\scripts\build-windows.ps1 -Zip
 ```
 
 The ZIP is optional, is about 209 MB in the verified CI build, and is not required to create the installer. The pinned

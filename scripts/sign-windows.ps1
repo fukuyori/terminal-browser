@@ -61,11 +61,11 @@ function DefaultTargets {
                 -not $_.FullName.StartsWith("$electron\", [StringComparison]::OrdinalIgnoreCase)
             }).FullName
     }
-    if (-not $NoInstaller) {
-        $out = Join-Path $root "dist-release"
-        if (Test-Path -LiteralPath $out) {
-            $targets += (Get-ChildItem -LiteralPath $out -Filter "terminal-browser-*-windows-x64.exe" -File).FullName
-        }
+    $versionFile = Join-Path $payload "VERSION"
+    if (-not $NoInstaller -and (Test-Path -LiteralPath $versionFile -PathType Leaf)) {
+        # Only this payload's installer: older ones kept in dist-release are left as they were built.
+        $version = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+        $targets += Join-Path $root "dist-release\terminal-browser-$version-windows-x64.exe"
     }
     return $targets | Where-Object {
         $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) -and

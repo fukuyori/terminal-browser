@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
-const { ipcEndpoint } = require("pixel-store");
+const { ipcEndpoint } = require("shared");
 const { FrameHost } = require("../dist/claude-frame-host.js");
 
 async function peer(endpoint) {

@@ -120,13 +120,12 @@ Windows では端末のコンソールから起動してください。ブリッ
 
 ### Windows版のソースビルド
 
-[fukuyori/pixel](https://github.com/fukuyori/pixel) を隣の `../pixel` に配置し、
-[pixel.commit](pixel.commit) の完全なSHAをチェックアウトしてください。
-ビルドスクリプトがPixelのインストール・ビルド後に本体の依存をインストールします。
-terminal-browserのリポジトリで実行します。
+描画エンジンのPixelは、このリポジトリの `pixel/` にあります。ビルドスクリプトが
+ワークスペースの依存をインストールし、Pixelとネイティブアドオンを最初からビルドします。
+リポジトリのルートで実行します。
 
 ```powershell
-.\scripts\build-windows.ps1 -RequireCleanPixel
+.\scripts\build-windows.ps1
 .\scripts\package-windows-inno.ps1
 ```
 
@@ -134,7 +133,7 @@ terminal-browserのリポジトリで実行します。
 `dist-release\terminal-browser-<version>-windows-x64.zip`も作成します。
 
 ```powershell
-.\scripts\build-windows.ps1 -Zip -RequireCleanPixel
+.\scripts\build-windows.ps1 -Zip
 ```
 
 ZIPは任意作成で、確認済みCIビルドのサイズは約209 MBです。インストーラー作成には必要ありません。固定バージョンの

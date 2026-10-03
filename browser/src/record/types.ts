@@ -60,6 +60,7 @@ export interface RecordView {
   durationMs: number;
   currentKey: number | null;
   pageUrl: string;
+  recordKey: string;
   shots: RecordShot[];
   shotThumb: Surface | null;
   keyframeCount: number;

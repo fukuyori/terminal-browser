@@ -13,16 +13,25 @@ function localFile(input: string, cwd?: string): string | null {
   return fs.existsSync(absolute) ? absolute : null;
 }
 
-export function searchOrUrl(text: string, cwd?: string): string {
+export type SearchUrl = (query: string) => string;
+
+export function searchUrlFor(template: string): SearchUrl {
+  return (query) => {
+    const encoded = encodeURIComponent(query);
+    return template.includes("%s") ? template.split("%s").join(encoded) : `${template}${encoded}`;
+  };
+}
+
+export function searchOrUrl(text: string, cwd: string | undefined, search: SearchUrl): string {
   const trimmed = text.trim();
   if (HAS_AUTHORITY.test(trimmed) || SCHEMES_WITHOUT_HOST.test(trimmed)) return trimmed;
   if (localFile(trimmed, cwd)) return trimmed;
   if (!trimmed.includes(" ") && trimmed.includes(".")) return trimmed;
   if (/^[\w-]+:\d+(\/.*)?$/.test(trimmed)) return trimmed;
-  return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+  return search(trimmed);
 }
 
-export function normalizeUrl(value: string, cwd?: string): string {
+export function normalizeUrl(value: string, cwd: string | undefined, search: SearchUrl): string {
   const input = value.trim();
   if (!input) return "about:blank";
   if (HAS_AUTHORITY.test(input) || SCHEMES_WITHOUT_HOST.test(input)) {
@@ -37,15 +46,14 @@ export function normalizeUrl(value: string, cwd?: string): string {
     const scheme = host === "localhost" || host === "127.0.0.1" ? "http" : "https";
     return new URL(`${scheme}://${input}`).toString();
   }
-  return `https://www.google.com/search?q=${encodeURIComponent(input)}`;
+  return search(input);
 }
 
 const HAS_AUTHORITY = /^[a-z][a-z0-9+.-]*:\/\//i;
 const SCHEMES_WITHOUT_HOST = /^(?:data|mailto|tel|about|blob|chrome|view-source):/i;
 
-/** Compact form shown in the tab strip. */
 export function displayUrl(url: string): string {
-  if (!url || url === "about:blank") return "new tab";
+  if (!url || url === "about:blank") return "New tab";
   if (url.startsWith("file://")) return homeRelative(url);
   return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }

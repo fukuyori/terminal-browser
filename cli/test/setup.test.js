@@ -102,8 +102,7 @@ test("setup command installs Windows skills and editor settings", { skip: proces
     });
 
     assert.equal(child.status, 0, child.stderr);
-    assert.match(child.stdout, /installed agent skills \(2\)/);
-    assert.match(child.stdout, /enabled terminal images in Code/);
+    assert.match(child.stdout, /installed skill for codex/);
     assert.equal(
       fs.realpathSync(path.join(home, ".codex", "skills", "terminal-browser")),
       fs.realpathSync(skill),

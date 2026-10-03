@@ -130,10 +130,19 @@ type GrabMessage =
 
 export interface GrabHooks {
   selected(content: string): void;
+  changed(): void;
 }
 
 export class Grab {
-  active = false;
+  private _active = false;
+  get active(): boolean {
+    return this._active;
+  }
+  private set active(value: boolean) {
+    if (this._active === value) return;
+    this._active = value;
+    this.hooks.changed();
+  }
   private readonly onMessage = (_event: unknown, method: string, params: unknown) => {
     if (method === "Page.frameNavigated") {
       const frame = (params as { frame?: { parentId?: string } }).frame;

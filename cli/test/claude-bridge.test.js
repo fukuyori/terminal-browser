@@ -7,7 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { ipcEndpoint } = require("pixel-store");
+const { ipcEndpoint } = require("shared");
 const { clipboardWriter } = require("../dist/claude-bridge.js");
 
 const MAIN = path.join(__dirname, "..", "dist", "main.js");

@@ -5,7 +5,7 @@ const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
-const { ipcEndpoint } = require("pixel-store");
+const { ipcEndpoint } = require("shared");
 
 const windowsOnly = { skip: process.platform !== "win32", timeout: 20000 };
 const fixture = path.join(__dirname, "fixtures", "bridge-launch.cjs");

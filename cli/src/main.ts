@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   DAEMON_SOCKET,
   LOGS_DIR,
+  TERMINAL_SOCKET_ENV,
   appId,
   ensureDataDir,
   instanceKey,
@@ -14,8 +15,9 @@ import {
   logLifecycle,
   observeProcessExit,
   registerApp,
+  socketTerminal,
   unregisterApp,
-} from "pixel-store";
+} from "shared";
 import {
   callerTty,
   canSplit,
@@ -29,8 +31,7 @@ import { findOwner } from "@zenbu-labs/pixel/terminal";
 import type { Direction, Terminal, TerminalCheck } from "@zenbu-labs/pixel/terminal";
 import { actionCommand } from "./action";
 import { control } from "./control";
-import { setupCommand } from "./editors";
-import { ensureSetup, linkSkills, markSetupDone } from "./setup";
+import { ensureSetup, setupCommand } from "./setup";
 import { commandHelp, helpTopics, rootHelp } from "./help";
 import { browsers, describe, recordKey } from "./instances";
 import type { Browser } from "./instances";
@@ -42,6 +43,7 @@ import { connectSsh, validateSshTarget } from "@zenbu-labs/pixel/ssh";
 import type { InstanceRecord } from "./registry";
 import { installedVersion, upgradeCommand } from "./upgrade";
 import { claudeBridgeCommand } from "./claude-bridge";
+import { configCommand } from "./config";
 
 const DIST_ROOT = process.env.TERMINAL_BROWSER_DIST_ROOT ?? null;
 const CAPABILITIES = ["embedding", "image-embedding"] as const;
@@ -210,6 +212,7 @@ function spawnDaemon() {
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !key.startsWith("PIXEL_")),
   );
+  env.NODE_ENV ??= "production";
   const stderr = fs.openSync(path.join(LOGS_DIR, "stderr.log"), "a");
   const windows = process.platform === "win32";
   let child: ReturnType<typeof spawn>;
@@ -506,7 +509,8 @@ async function launchInSplit(
 let asked: Promise<TerminalCheck> | null = null;
 
 function currentTerminal(): Promise<TerminalCheck> {
-  asked ??= checkTerminal(detect());
+  const socket = process.env[TERMINAL_SOCKET_ENV];
+  asked ??= checkTerminal(socket ? socketTerminal(socket) : detect());
   return asked;
 }
 
@@ -549,10 +553,6 @@ async function requireGraphics(check: TerminalCheck) {
 const BROWSER_FLAGS = [
   "--allow-clipboard-read",
   "--ssh=",
-  "--palette-key=",
-  "--find-key=",
-  "--devtools-key=",
-  "--console-key=",
   "--split-dir=",
   "--parent-tty=",
 ];
@@ -793,20 +793,9 @@ async function main(): Promise<number> {
     await lsCommand((await currentTerminal()).terminal, all, json);
     return 0;
   }
-  if (command === "setup") {
-    const sandbox = apparmorSetup(electronBinary());
-    const skills = linkSkills();
-    if (skills.linkedPaths.length > 0) {
-      process.stdout.write(`installed agent skills (${skills.linkedPaths.length})\n`);
-    }
-    for (const file of skills.left) {
-      process.stdout.write(`left ${file} unchanged because it is not a link\n`);
-    }
-    const editors = setupCommand();
-    markSetupDone();
-    return editors !== 0 ? editors : sandbox;
-  }
+  if (command === "setup") return setupCommand(electronBinary());
   if (command === "upgrade") return upgradeCommand();
+  if (command === "config") return configCommand(args);
   if (command === "claude-bridge") return claudeBridgeCommand(args);
   if (command === "shutdown") return shutdownDaemon();
   if (command === "register-app") return registerAppCommand(args);

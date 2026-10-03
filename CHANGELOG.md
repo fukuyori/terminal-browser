@@ -6,6 +6,25 @@ Notable changes to the Windows fork of terminal-browser are documented here.
 
 ## Unreleased
 
+- Move to upstream v0.13.4: settings and shortcut config files with a settings
+  screen, WebMCP, the toolbar React Grab button, and the reworked presenter that
+  lowers CPU use. Pixel now lives in this repository under `pixel/`, so the
+  separate Pixel checkout, `pixel.commit` and `-RequireCleanPixel` are gone.
+
+- Send no telemetry from this fork. Upstream's usage events and crash reports
+  are disabled in the build and their settings are removed.
+
+- Skip upstream's update check on Windows, whose release feed only lists macOS
+  and Linux builds.
+
+- Keep `Ctrl+Shift+Q` as a default quit key alongside `Ctrl+Q`, since upstream's
+  configurable shortcuts match modifiers exactly.
+
+- Leave earlier ZIPs and installers in `dist-release` when building. The build
+  replaces only the unpacked payload and the files of the version being built,
+  and signing touches only that version's installer. The two manifests describe
+  the latest build.
+
 - Limit CI to Windows build/test/installer verification with read-only repository
   permissions. Publish maintainer-signed packages separately through GitHub Releases.
 
