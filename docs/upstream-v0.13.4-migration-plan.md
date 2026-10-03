@@ -8,10 +8,11 @@ Windows 対応フォーク (`windows-v0.11.1`) を upstream `zenbu-labs/terminal
 実測したもの。実測していない事項は「未確認」と明記する。「決定が必要な事項」は、決定済みと記したもの以外は未決定で、
 推奨案を添えている。
 
-## 現在の状態（2026-10-03）
+## 計画作成時の状態（2026-10-03）
 
-- フォークの作業ブランチは `windows-v0.11.1`（`c31271c`）。`0.11.1-win.1` を
-  [GitHub Release](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1) として公開済み。
+移行を始める前の状態。現在の状態は次の「作業の進捗」を参照。
+
+- フォークの作業ブランチは `windows-v0.11.1`（`c31271c`）。バージョンは `0.11.1-win.1`（2026-09-21）。
 - Pixel は別リポジトリ `fukuyori/pixel` の `windows-v0.11.1`（`5bb53b9`）を `pixel.commit` で pin している。
 - 未解決の issue は [#1 原因不明のブラウザ終了](https://github.com/fukuyori/terminal-browser/issues/1) と
   [#2 WezTerm での Image 非対応](https://github.com/fukuyori/terminal-browser/issues/2)。
@@ -21,7 +22,8 @@ Windows 対応フォーク (`windows-v0.11.1`) を upstream `zenbu-labs/terminal
 ## 作業の進捗（2026-10-03）
 
 ブランチ `windows-v0.13.4` で段階 0〜6 を進め、2026-10-03 にバージョンを `0.13.4-win.1` として
-タグを作成した。残りは `windows-native` へのマージと `fukuyori/pixel` の削除。
+タグを作成した。同日に `windows-native` へマージし、`fukuyori/pixel` を公開アーカイブとした。
+この計画に挙げた作業はすべて完了した。
 
 | 段階 | 状態 |
 |---|---|
@@ -32,7 +34,7 @@ Windows 対応フォーク (`windows-v0.11.1`) を upstream `zenbu-labs/terminal
 | 4 スクリプト | `build-windows.ps1` をリポジトリ内の `pixel/` をビルドする形にした。`pixel.commit` と `-RequireCleanPixel` を廃止 |
 | 5 CI | workflow を 1 回の checkout に書き換えた。runner で `a801932` と `bc60d03` が通過。[記録](ci-verification.md#runs-on-the-v0134-branch-2026-10-03) |
 | 6 実機確認 | A〜E 群と G1 が通過。F 群は署名済み成果物の照合まで。[記録](windows-device-checks.md#v0134-migration-results-2026-10-03) |
-| 7 リリース | 2026-10-03 に README と CHANGELOG を `0.13.4-win.1` に更新し、タグを `83142b7` に作成。`windows-native` へのマージと `fukuyori/pixel` の削除は未実施 |
+| 7 リリース | 2026-10-03 に README と CHANGELOG を `0.13.4-win.1` に更新し、タグを `83142b7` に作成。同日、`windows-native` へマージした（`5dd503b`）。`fukuyori/pixel` は削除せず、公開アーカイブとした |
 
 ローカルでの確認結果（Windows、2026-10-03）:
 
@@ -276,21 +278,21 @@ POSIX 共有メモリは Windows に無い。Windows の Claude Code が `shm` �
 ### 1. Pixel の持ち方
 
 決定（2026-10-03）: upstream に合わせ、フォーク本体の `pixel/` に Windows 変更を載せる。
-移行が終わったら `fukuyori/pixel` は削除する。
+`fukuyori/pixel` では新しい作業をしない。
 
-- `pixel.commit`、`-RequireCleanPixel`、`scripts/pixel-paths.mjs`、`file:../pixel` の override、
-  CI の 2 回 checkout を廃止する。
-- Windows 対応の 7 コミットは段階 2 で本体の `pixel/` に載せるので、変更内容は本体の履歴に残る。
+- `pixel.commit`、`-RequireCleanPixel`、`file:../pixel` の override、CI の 2 回 checkout を廃止した。
+  `scripts/pixel-paths.mjs` は、2 リポジトリ構成に依存していないので残した。
+- Windows 対応の 7 コミットは段階 2 で本体の `pixel/` に載せたので、変更内容は本体の履歴に残る。
 
-削除すると次のものが使えなくなる。削除の前に段階 7 の条件を満たす。
+`fukuyori/pixel` は、当初は移行後に削除する決定だった。実際には削除せず、2026-10-03 に
+公開のままアーカイブとした。
 
-- `0.11.1-win.1`（タグ `eb594b2`）と `windows-v0.11.1` ブランチは、`pixel.commit` の `5bb53b9` を
-  GitHub から取得できなくなり、ソースからの再ビルドと CI 実行ができなくなる。
-  公開済みの ZIP とインストーラーには影響しない。
-- `README.md` と `README.ja.md` にある `fukuyori/pixel` へのリンク 2 箇所ずつが切れる。
-- `docs/ci-verification.md` と前回の計画書にある `fukuyori/pixel` の記述は履歴として残るが、
-  参照先は無くなる。
-- GitHub 上のリポジトリ削除は取り消せない。ローカルの `D:\home\source\rust\pixel` は別に残る。
+- `0.11.1-win.1`（タグ `eb594b2`）と `windows-v0.11.1` ブランチが使う `pixel.commit` の `5bb53b9` は、
+  引き続き GitHub から取得できる。ソースからの再ビルドができる状態が保たれる。
+- アーカイブ後は push、issue、プルリクエストを受け付けない。新しい作業は本体の `pixel/` で行う。
+- `docs/ci-verification.md` と前回の計画書にある `fukuyori/pixel` の記述は、参照先が残ったまま
+  履歴として読める。
+- アーカイブは GitHub の設定から解除できる。
 
 ### 2. 取り込み方法
 
@@ -358,7 +360,7 @@ XDG 形式を Windows でも使っているので揃う。
 
 実施済み（2026-10-03）: `fukuyori/terminal-browser` の `main` を upstream の `main`（`2bdf227`）へ
 fast-forward で push した。移行先の v0.13.4（`fd5f179`）はその 1 つ前のコミットで、`origin/main` に含まれる。
-`fukuyori/pixel` の `main` は push していない（移行後に削除するため）。
+`fukuyori/pixel` の `main` は push していない。新しい作業をしないリポジトリで、その後アーカイブとした。
 
 ### 11. 最終的な取り込み先
 
@@ -381,6 +383,18 @@ fast-forward で push した。移行先の v0.13.4（`fd5f179`）はその 1 �
 
 マージの前に、`windows-native` だけにある 20 件のコミットに、移行ブランチへ載せていない内容が
 残っていないかを確認する。
+
+実施（2026-10-03）: 推奨の方法でマージした。
+
+- 20 件のコミットを確認し、引き継ぎ漏れは無かった。フォークが追加したファイルで移行ブランチに
+  無かったのは 2 つで、`herdr_windows.rs` は中身が空の仮実装で `host_stream.rs` に置き換え済み、
+  `scripts/fetch-electron.mjs` は v0.11.1 への移行で意図して削除したもの。最上位の `engine`、
+  `terminals`、`store` は upstream で廃止または移動されていた。
+- マージコミットは `5dd503b`。親は `fd4be2f`（それまでの `windows-native`）と `a95adae`
+  （`windows-v0.13.4`）で、内容は `windows-v0.13.4` と同一。差分は 0 ファイル。
+- `windows-native` から `0.5.8-win.1`、`0.8.0-win.1`、`0.11.1-win.1`、`0.13.4-win.1` の 4 つのタグが辿れる。
+- その後の変更は `windows-native` の先端に積み、`windows-v0.13.4` をそこへ fast-forward して、
+  2 つのブランチを同じコミットに揃えている。
 
 ## 作業手順
 
@@ -450,18 +464,15 @@ fast-forward で push した。移行先の v0.13.4（`fd5f179`）はその 1 �
 README（日英）、CHANGELOG（日英）、プラグイン README を更新する。レモンが署名済みの ZIP と
 インストーラーを作成し、F 群を確認してから `0.13.4-win.1` を公開する。
 
-公開後に `fukuyori/pixel` を削除する。削除の前に次を確認する。
+`fukuyori/pixel` は、当初は削除する計画だったが、2026-10-03 に公開アーカイブとした
+（決定事項 1）。その時点で次を満たしていた。
 
-- `0.13.4-win.1` が公開済みで、本体だけの checkout から CI のビルドとテストが通っている。
-- フォーク Pixel の 7 コミットの内容がすべて本体の `pixel/` に入っている。
+- 本体だけの checkout から CI のビルドとテストが通っている。
+- フォーク Pixel の 7 コミットの内容が本体の `pixel/` に入っている。
 - `README.md` と `README.ja.md` の `fukuyori/pixel` へのリンクを、本体の `pixel/` 配下に書き換えてある。
-- `windows-v0.11.1` ブランチと `0.11.1-win.1` を今後ソースから再ビルドしないことを確認した。
-  再ビルドの可能性を残す場合は、ローカルの Pixel リポジトリを保管しておく。
 
-削除は取り消せない操作なので、レモンが行うか、その時点の明示的な指示で行う。
-
-`windows-native` へのマージ（決定事項 11）は、`0.13.4-win.1` の実機確認が通ってから行う。
-マージ後は `windows-native` への push で Windows CI が動くよう、workflow の対象ブランチを合わせる。
+`windows-native` へのマージ（決定事項 11）は、`0.13.4-win.1` の実機確認のあと、2026-10-03 に行った。
+workflow の対象ブランチには `windows-native` を入れてあり、push で Windows CI が動く。
 
 ## リスクと未確認事項
 
@@ -473,6 +484,7 @@ README（日英）、CHANGELOG（日英）、プラグイン README を更新す
 - 端末アクション用ソケットが名前付きパイプで動くかは未確認。
 - `git am -3 --directory=pixel` による適用は未検証。
 - 衝突数はテキスト上のもの。衝突なく通った箇所の不整合は、段階 1 と 2 の型チェックとテストで洗い出す。
-- `fukuyori/pixel` の削除後は、`0.11.1-win.1` をソースから再現できなくなる。
+- `fukuyori/pixel` を削除した場合は `0.11.1-win.1` をソースから再現できなくなるが、
+  アーカイブとして残したので、この点は起きていない。
 - upstream は v0.13.4 の後も進んでいる（`main` は 1 コミット先）。移行中に新しいタグが出た場合に
   移行先を動かすかどうかは、その時点で判断する。
