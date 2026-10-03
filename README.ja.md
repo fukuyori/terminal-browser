@@ -4,8 +4,6 @@
 
 Windowsターミナル内で動作する本物のブラウザです。
 
-<video src="https://github.com/user-attachments/assets/abe2f43e-fc50-4866-b753-33388967945d" controls></video>
-
 ## オリジナル版との関係
 
 このリポジトリは、[zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser)

@@ -4,8 +4,6 @@
 
 A real browser that runs inside your Windows terminal.
 
-<video src="https://github.com/user-attachments/assets/abe2f43e-fc50-4866-b753-33388967945d" controls></video>
-
 ## Relationship to the original project
 
 This repository is a Windows-specific fork of
