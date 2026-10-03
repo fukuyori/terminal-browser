@@ -20,7 +20,8 @@ Windows 対応フォーク (`windows-v0.11.1`) を upstream `zenbu-labs/terminal
 
 ## 作業の進捗（2026-10-03）
 
-ブランチ `windows-v0.13.4` で段階 0〜6 を進めた。段階 7 はタグ作成と公開が未実施。
+ブランチ `windows-v0.13.4` で段階 0〜6 を進め、2026-10-03 にバージョンを `0.13.4-win.1` として
+タグを作成した。残りは `windows-native` へのマージと `fukuyori/pixel` の削除。
 
 | 段階 | 状態 |
 |---|---|
@@ -31,7 +32,7 @@ Windows 対応フォーク (`windows-v0.11.1`) を upstream `zenbu-labs/terminal
 | 4 スクリプト | `build-windows.ps1` をリポジトリ内の `pixel/` をビルドする形にした。`pixel.commit` と `-RequireCleanPixel` を廃止 |
 | 5 CI | workflow を 1 回の checkout に書き換えた。runner で `a801932` と `bc60d03` が通過。[記録](ci-verification.md#runs-on-the-v0134-branch-2026-10-03) |
 | 6 実機確認 | A〜E 群と G1 が通過。F 群は署名済み成果物の照合まで。[記録](windows-device-checks.md#v0134-migration-results-2026-10-03) |
-| 7 リリース | README と CHANGELOG を `0.13.4-win.1` に更新。タグ作成、公開、`windows-native` へのマージ、`fukuyori/pixel` の削除は未実施 |
+| 7 リリース | 2026-10-03 に README と CHANGELOG を `0.13.4-win.1` に更新し、タグを `83142b7` に作成。`windows-native` へのマージと `fukuyori/pixel` の削除は未実施 |
 
 ローカルでの確認結果（Windows、2026-10-03）:
 

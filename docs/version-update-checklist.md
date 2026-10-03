@@ -3,6 +3,9 @@
 - Set the default `Version` in `scripts/build-windows.ps1` to `X.Y.Z-win.N`.
 - Update the current version and four-part installer example in `README.md` and `README.ja.md`.
 - Add matching release entries to `CHANGELOG.md` and `CHANGELOG.ja.md`.
+- Give the date of the version change in the changelog heading and the READMEs,
+  and nothing about whether the release has been published. Publishing is the
+  maintainer's step and normally happens that day.
 - Confirm `scripts/package-windows-inno.ps1` maps `X.Y.Z-win.N` to `X.Y.Z.N`.
 - Keep `X.Y.Z-win.N` in both ZIP and EXE filenames and both manifests' `version`.
   The installer manifest's `installerVersion` holds the numeric `X.Y.Z.N`.

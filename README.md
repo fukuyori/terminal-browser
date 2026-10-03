@@ -24,11 +24,10 @@ other platforms remains in the original project.
 Features incorporated from upstream and changes unique to each Windows release are listed in the
 [changelog](CHANGELOG.md).
 
-Releases are published on the
-[releases page](https://github.com/fukuyori/terminal-browser/releases) from a
-locally built, signed and verified ZIP and installer; the previous one was
-[0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1)
-on 2026-09-21. CI builds are unsigned and are for verification only. See the
+The current version is `0.13.4-win.1`, dated 2026-10-03. Releases are on the
+[releases page](https://github.com/fukuyori/terminal-browser/releases), each a
+locally built, signed and verified ZIP and installer. CI builds are unsigned
+and are for verification only. See the
 [CI results](docs/ci-verification.md) and [device checks](docs/windows-device-checks.md).
 
 ## Windows support (experimental)

@@ -23,10 +23,9 @@ Windowsフォークだけを対象としています。
 上流から取り込んだ機能と各Windowsリリース固有の変更は、
 [変更履歴](CHANGELOG.ja.md)を参照してください。
 
-リリースは、ローカルで作成・署名・検証した ZIP とインストーラーを
-[リリースページ](https://github.com/fukuyori/terminal-browser/releases)で公開します。前回は 2026-09-21 の
-[0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1)
-です。CI の未署名成果物は検証用です。[CI結果](docs/ci-verification.md)と
+現在のバージョンは `0.13.4-win.1`（2026-10-03）です。リリースは
+[リリースページ](https://github.com/fukuyori/terminal-browser/releases)にあり、いずれもローカルで
+作成・署名・検証した ZIP とインストーラーです。CI の未署名成果物は検証用です。[CI結果](docs/ci-verification.md)と
 [実機確認記録](docs/windows-device-checks.md)を参照してください。
 
 ## Windows対応（実験的）
