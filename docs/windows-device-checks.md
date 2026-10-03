@@ -35,6 +35,90 @@ tested builds, not the current state of generated files in any checkout.
   [0.11.1-win.1](https://github.com/fukuyori/terminal-browser/releases/tag/0.11.1-win.1).
   GitHub asset sizes and SHA-256 digests matched all four local release files.
 
+## v0.13.4 migration results (2026-10-03)
+
+Checked in Ghostty on the `windows-v0.13.4` branch at `a801932`. The user ran
+the installed `0.13.4-win.1` build and, for the profile, the development
+checkout; both are the same source. Steps below refer to the tables in each
+group's section.
+
+| Group | Result |
+| --- | --- |
+| A1 launch, A3 click, A4 IME input, A5 drag selection, A6 resize, A7 quit | Passed |
+| A2 wheel scrolling | Passed with a note, see below |
+| B1 files while running | Passed: eight frame files, unchanged over ten seconds, no patch payload files |
+| B2 files after quitting | Passed: none left, no `pixel.exe` left |
+| B3 kill, then launch | Passed: the killed process's eight files were gone and the new process had eight |
+| C real-process check | Passed with `--no-merge`: owner and guest frames, tab switching, resize, guest input, drawing past 14 seconds, browser tab, shutdown |
+| C1 second app starts, C2 it appears in pane 1, C4 resize, C5 Ctrl+C in its own tab | Passed in the development build |
+| C3 input and tab switching | Passed by clicking the app's tabs, see below |
+| C6 end the first app from outside | Passed: within six seconds no CLI process, no `pixel.exe` and no pipe was left |
+| D1 `--ssh fuk@192.168.12.12` | Passed: the tunnel process held a local SOCKS port and the page was displayed |
+| D2 host alias | Passed with `ssh -F <temporary config> tbcheck`: the tunnel used that config and alias |
+| D3 picture paste | Passed both ways on imgbb: a Win+Shift+S snip and a `.png` copied in Explorer |
+| D4 `action` | Passed against the open browser with the bundled agent-browser v0.38.1: target listing, snapshot in 0.9 s, `eval`, `open`, and Japanese text in `eval` |
+| E production-bridge check | Passed: PNG and reduced RGBA frames, resize at four sizes with real input, two hide/reopen cycles, a stopped browser reported without a stale frame |
+| E1 page draws in Claude Code, E2 click and IME entry with Ctrl+A replacement | Passed in Ghostty with the plugin loaded from this checkout |
+| E3 selected Japanese text, E4 two Japanese lines with their line break | Passed: both pasted into Notepad intact |
+| E resize | Passed: shrink and enlarge, then IME entry and Apply |
+| E5 close and reopen | Passed: the same browser process was reused and no second start was logged |
+| E session exit | Passed: about a minute after `/exit` the bridge ended and stopped its browser, logged with `stopping: true` |
+| F package and installer | Partly observed, not a full F run. The user built and installed a signed `0.13.4-win.1` installer at 16:41-16:47 from the working tree that became `a801932`; no ZIP was made. Installed `pixel.exe`, `pixel.node`, `agent-browser.exe` and `unins000.exe` had `Valid` signatures, the installed build ran groups A and B, and the earlier 0.11.1 archive and installers were still in `dist-release` after the build. F4 (Start menu shortcut) and F7 (uninstall) were not run, and artifact hashes were not recorded |
+| G1 one pane over its life | Passed: `scope` stayed `0x9997c4e9b84b7f08` across a resize and a focus change, and matched `GHOSTTY_SURFACE_ID` |
+| G2 panes at the same time | Not run as its own step. The tabs used during C and E reported different ids (`0x39c9c06036237514`, `0x2f8fa6c62a346f0c`, `0x9997c4e9b84b7f08`); a split and a second window were not recorded |
+| G3 after restarting the terminal | Not run as its own step. Sessions launched in newly opened Ghostty windows during D drew, took input and quit normally |
+
+Lifecycle logs recorded each quit as `quit key` with exit code 0, and no
+`telemetry.jsonl` was written in either log directory.
+
+### Wheel scrolling (A2)
+
+The user reported that scrolling pauses for a moment and then moves, and that
+the jump per notch looked larger than in `0.11.1-win.1`. After comparing the
+two builds side by side the user judged the difference small and accepted it.
+
+A profile recorded in the development build
+(`profiles/devtools-profile-2026-10-03-08-31-55.json`, ignored) showed:
+
+- engine frames took 1.6 ms at the median and 2.4 ms at most, with none over 30 ms;
+- a wheel event reached the next drawn frame in 15.6 ms at the median and
+  within 39 ms for 90% of events;
+- each wheel event produced about one page repaint, so the page moves in
+  steps the size of a notch;
+- nine page frames waited 46-568 ms for the next engine frame, and all nine
+  were frames in which no pixel had changed, so they were not stalls.
+
+The engine's wheel handling, the forwarding of wheel input to the page and the
+page host are the same source as in the 0.11.1 fork. What happens before the
+engine receives a wheel report and after it writes a frame is outside the
+profile and was not measured. No cause for a difference from 0.11.1 was found.
+
+### Other observations
+
+- After the first SSH session was quit with the quit key, the user saw mouse
+  reports printed as text in a tab. That session's lifecycle log shows a quit
+  key shutdown with exit code 0. Four further SSH sessions were quit the same
+  way and each returned to a clean prompt. The one occurrence was not explained
+  or reproduced. The same display is expected in a tab whose app was ended from
+  outside, as in C6 and B3.
+- One session's daemon left no exit record and its CLI logged `daemon
+  connection closed`. The user had closed the Ghostty window holding it, so it
+  was not a repeat of the unexplained exit. That pairing of records is what an
+  externally ended or closed session looks like.
+- In C3, `Alt+1` and `Alt+2` switched Ghostty's own tabs instead of reaching
+  the app, because both apps were started from tabs of one Ghostty window.
+  Clicking the app's tabs switched between the two apps, and clicks and keys
+  reached the second app.
+- `Ctrl+K` did not open the command palette while `Alt+K`, `Ctrl+L` and
+  `Ctrl+T` worked. The shortcut matcher maps `Ctrl+K` to the palette when
+  tested directly, so the key did not arrive as such; why was not established.
+- "Start profile" is offered only when `TERMINAL_BROWSER_DIST_ROOT` is unset,
+  which means the development checkout and not an installed build.
+- The first launch of the development build failed: the daemon took 14 seconds
+  to report that it had started and the CLI gave up at 15 seconds with
+  `attach failed`. The second launch worked, and the installed build started
+  in 0.2 seconds. The cause was not established.
+
 ## How to run it
 
 In Ghostty or WezTerm, from the repository:
@@ -707,7 +791,7 @@ Ghostty and WezTerm name their panes differently, and a terminal that names no
 pane puts every window on one daemon. Record what each one reports.
 
 ```powershell
-node -e "const{consoleScope,daemonName}=require('D:/home/source/rust/terminal-browser/store/dist/paths.js');console.log(JSON.stringify({GHOSTTY_SURFACE_ID:process.env.GHOSTTY_SURFACE_ID??null,WEZTERM_PANE:process.env.WEZTERM_PANE??null,WT_SESSION:process.env.WT_SESSION??null,scope:consoleScope(),daemon:daemonName()}))"
+node -e "const{consoleScope,daemonName}=require('D:/home/source/rust/terminal-browser/shared/dist/paths.js');console.log(JSON.stringify({GHOSTTY_SURFACE_ID:process.env.GHOSTTY_SURFACE_ID??null,WEZTERM_PANE:process.env.WEZTERM_PANE??null,WT_SESSION:process.env.WT_SESSION??null,scope:consoleScope(),daemon:daemonName()}))"
 ```
 
 Paste the whole line each time; the last few characters of an id are not
