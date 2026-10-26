@@ -338,10 +338,6 @@ terminal-browser CLIの一部のサブコマンドは、ターミナルまたは
 します。別のターミナルに対応する場合は、
 [Pixel側の端末実装](pixel/packages/pixel/src/terminal/terminals)を参照してください。
 
-## コミュニティ
-
-[Discord](https://discord.gg/t3jzHHfc6z)
-
 ## 謝辞
 
 - kitty graphics protocolを開発した[kitty](https://github.com/kovidgoyal/kitty)

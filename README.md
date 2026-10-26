@@ -344,10 +344,6 @@ Some terminal-browser CLI subcommands rely on terminal or multiplexer scripting 
 add support for another terminal, refer to the
 [Pixel terminal implementations](pixel/packages/pixel/src/terminal/terminals).
 
-## Community
-
-[Discord](https://discord.gg/t3jzHHfc6z)
-
 ## Acknowledgments
 
 - [kitty](https://github.com/kovidgoyal/kitty) for the kitty graphics protocol
